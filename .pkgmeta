@@ -3,5 +3,6 @@ package-as: VelocityPlateStyle
 ignore:
   - README.md
   - SPECS
+  - Assets/Screenshots
   - .gitignore
   - .pkgmeta
