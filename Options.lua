@@ -441,7 +441,7 @@ SlashCmdList.VELOCITYPLATESTYLE = function(msg)
 				fs and (fs:GetText() or "") or "-", fs and tostring(fs.vpsWidth) or "-"))
 		end
 		local glow = uf.vpsGlow
-		VPS.Print(string.format("overlevel: mode=%s threshold=%s unitLevel=%s playerLevel=%s verdict=%s glow=%s shown=%s scrolling=%s",
+		VPS.Print(string.format("overlevel: mode=%s threshold=%s unitLevel=%s playerLevel=%s verdict=%s glow=%s shown=%s sweeping=%s",
 			tostring(VPS.db.overLevelMode), tostring(VPS.db.overLevelThreshold), tostring(UnitLevel("target")), tostring(UnitLevel("player")),
 			tostring(VPS.Skin.IsOverLevel("target")), glow and "created" or "nil", glow and tostring(glow.tex:IsShown()) or "-",
 			glow and tostring(glow.scrollGroup:IsPlaying()) or "-"))

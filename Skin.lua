@@ -435,21 +435,23 @@ end
 --------------------------------------------------------------------------------
 -- Over-level highlight: unitLevel >= playerLevel + threshold, or skull.
 --
--- "animated" / "animatedRed": our own marching-stripe glow. Assets\hatch.tga (diagonal stripes,
--- tiles in U) is laid over the bar rect with SetHorizTile(true) and scrolled by a looping
--- TextureCoordTranslation animation - the same client-side mechanism Blizzard uses for the stock
--- aggro flare (AggroHighlightScrollAnim) - with an alpha pulse on top. Additive blend, gold or
--- vertex-tinted red. No Lua runs per frame (R4). The 10.x proc flipbook was tried first and
--- rejected: its orbiting sparks smear to a static tint on a wide thin bar (58cb482).
--- Red modes also turn the 1px outline and the name element red. "red": static, no glow.
+-- "animated" / "animatedRed": a "Perl"-style sheen. Assets\sweep.tga is ONE soft bright band
+-- (raised-cosine, slight diagonal lean) on a transparent 128px tile; laid over the bar rect with
+-- SetHorizTile(true) and scrolled by a looping TextureCoordTranslation - the same client-side
+-- mechanism Blizzard uses for the stock aggro flare - so a single highlight travels left-to-right
+-- across the bar every cycle, like light sliding over the SharedMedia "Perl" statusbar. Additive
+-- blend: white over the bar's own colour reads as a bright sheen of that colour; the gold mode
+-- tints it warm. No Lua runs per frame (R4).
+-- Rejected first: the 10.x proc flipbook (smears to a static tint on a bar, 58cb482) and dense
+-- diagonal stripes (reads as texture noise, not motion, 9f5b39e).
+-- Red modes also turn the 1px outline and the name element red. "red": static, no sheen.
 --------------------------------------------------------------------------------
 local OVER_LEVEL_RED = { 1, 0.15, 0.1 }
 local OVER_LEVEL_GOLD = { 1, 0.82, 0.2 }
-local GLOW_TEXTURE = "Interface\\AddOns\\" .. ADDON .. "\\Assets\\hatch.tga"
-local GLOW_TILE_PX = 64                              -- hatch.tga width; one U repeat
-local GLOW_SCROLL_SEC = 0.9                          -- time for the stripes to travel one tile
-local GLOW_PULSE_LO, GLOW_PULSE_HI, GLOW_PULSE_SEC = 0.45, 1.0, 0.6
-local GLOW_PAD = 1                                   -- px beyond the bar on each side (over the 1px outline)
+local GLOW_TEXTURE = "Interface\\AddOns\\" .. ADDON .. "\\Assets\\sweep.tga"
+local GLOW_SWEEP_SEC = 1.1                           -- one highlight crosses the whole bar per cycle
+local GLOW_ALPHA = 0.85
+local GLOW_PAD = 0                                   -- stays inside the 1px outline
 
 local function AcquireGlow(uf, hb)
 	if uf.vpsGlow then return uf.vpsGlow end
@@ -459,30 +461,23 @@ local function AcquireGlow(uf, hb)
 	tex:SetHorizTile(true)
 	tex:SetVertTile(false)
 	tex:SetBlendMode("ADD")
+	tex:SetAlpha(GLOW_ALPHA)
 	tex:Hide()
-	-- Two independent groups: a group's orders run in sequence, so a scroll sharing a group with
-	-- the two-leg pulse would idle during the second leg and stutter.
 	local scrollGroup = tex:CreateAnimationGroup()
 	scrollGroup:SetLooping("REPEAT")
 	local scroll = scrollGroup:CreateAnimation("TextureCoordTranslation")
-	scroll:SetOffset(1, 0); scroll:SetDuration(GLOW_SCROLL_SEC)
-	local pulseGroup = tex:CreateAnimationGroup()
-	pulseGroup:SetLooping("BOUNCE")
-	local pulse = pulseGroup:CreateAnimation("Alpha")
-	pulse:SetFromAlpha(GLOW_PULSE_HI); pulse:SetToAlpha(GLOW_PULSE_LO); pulse:SetDuration(GLOW_PULSE_SEC); pulse:SetSmoothing("IN_OUT")
-	uf.vpsGlow = { tex = tex, scrollGroup = scrollGroup, pulseGroup = pulseGroup }
+	-- The tile is mapped once across the bar (U 0..1), so an offset of -1 per cycle moves the
+	-- single band the full bar width left-to-right.
+	scroll:SetOffset(-1, 0); scroll:SetDuration(GLOW_SWEEP_SEC)
+	uf.vpsGlow = { tex = tex, scrollGroup = scrollGroup }
 	return uf.vpsGlow
 end
 
 local function LayoutGlow(glow, hb)
-	local w, h = hb:GetWidth(), hb:GetHeight()
-	if not w or w <= 0 then return end
 	glow.tex:ClearAllPoints()
 	PixelUtil.SetPoint(glow.tex, "TOPLEFT", hb, "TOPLEFT", -GLOW_PAD, GLOW_PAD)
 	PixelUtil.SetPoint(glow.tex, "BOTTOMRIGHT", hb, "BOTTOMRIGHT", GLOW_PAD, -GLOW_PAD)
-	-- Keep the stripe period at GLOW_TILE_PX regardless of bar width: U range = width / tile.
-	local repeats = math.max(1, (w + 2 * GLOW_PAD) / GLOW_TILE_PX)
-	glow.tex:SetTexCoord(0, repeats, 0, 1)
+	glow.tex:SetTexCoord(0, 1, 0, 1)     -- one band per bar width
 end
 
 local function GlowColor(mode)
@@ -520,9 +515,8 @@ function Skin.ApplyOverLevel(uf, unit)
 		LayoutGlow(glow, hb)
 		glow.tex:Show()
 		if not glow.scrollGroup:IsPlaying() then glow.scrollGroup:Play() end
-		if not glow.pulseGroup:IsPlaying() then glow.pulseGroup:Play() end
 	elseif glow.tex:IsShown() then
-		glow.scrollGroup:Stop(); glow.pulseGroup:Stop()
+		glow.scrollGroup:Stop()
 		glow.tex:Hide()
 	end
 end
