@@ -2,7 +2,7 @@
 ## Title: Velocity Plate Style
 ## Notes: Restyles Blizzard's own nameplates: flat bar, crisp outline, level inside the bar, clear target border. Nothing else.
 ## Author: Kuro
-## Version: @project-version@
+## Version: v2026.11.23.0214
 ## SavedVariables: VelocityPlateStyleDB
 ## IconTexture: Interface\AddOns\VelocityPlateStyle\Assets\VelocityPlateStyle.tga
 ## X-Website: https://github.com/WoWAddons-Kuro/VelocityPlateStyle
