@@ -436,20 +436,22 @@ end
 -- Over-level highlight: unitLevel >= playerLevel + threshold, or skull.
 --
 -- "animated" / "animatedRed" (owner's spec, 2026-11-23): the bar keeps Blizzard's own fill colour
--- (red hostile / yellow neutral) and we ADD one layer over it: the SharedMedia "Perl" statusbar
--- texture (Assets\perl.tga, from EasyFrames), vertex-coloured the COMPLEMENTARY colour - yellow
--- over a red bar, red over a yellow bar - additive blend, with its UVs scrolled left-to-right by a
--- looping TextureCoordTranslation (the client-side mechanism Blizzard's own aggro flare uses).
--- No Lua runs per frame (R4). "animated" = the same, but a fixed gold overlay instead of the
--- complementary colour. Rejected on the way here: the 10.x proc flipbook (58cb482), dense
--- diagonal stripes (9f5b39e), a single white sweep band (0d5e14f).
--- Red modes also turn the 1px outline and the name element red. "red": static, no sheen.
+-- (red hostile / yellow neutral) and a second FULL-BAR layer is drawn over it: the SharedMedia
+-- "Perl" statusbar texture (Assets\perl.tga, from EasyFrames: 64x8, fully opaque mid-grey with a
+-- few bright diagonal streaks) vertex-coloured the CONTRAST colour - yellow over a red bar, red
+-- over a yellow bar - at partial alpha with NORMAL blend, tiled along the bar and scrolled
+-- left-to-right by a looping TextureCoordTranslation (the client mechanism the stock aggro flare
+-- uses). Result: the whole bar turns the contrast colour with Perl's streaks sliding across it.
+-- (ADD blend was wrong: it only brightened the streaks and left the grey body invisible.)
+-- "animated" = the same with a fixed yellow overlay. No Lua runs per frame (R4). Red modes also
+-- turn the 1px outline red. "red": static red outline only. Text colours are never touched.
 --------------------------------------------------------------------------------
 local OVER_LEVEL_RED = { 1, 0.15, 0.1 }
 local OVER_LEVEL_YELLOW = { 1, 0.85, 0.1 }
 local GLOW_TEXTURE = "Interface\\AddOns\\" .. ADDON .. "\\Assets\\perl.tga"
-local GLOW_SWEEP_SEC = 1.4                           -- time for the Perl pattern to travel one full bar width
-local GLOW_ALPHA = 0.9
+local GLOW_TILE_PX = 64                              -- perl.tga width: tile it so the streaks keep their shape on any bar width
+local GLOW_SWEEP_SEC = 0.8                           -- one tile-width of travel per cycle (streak speed)
+local GLOW_ALPHA = 0.7                               -- bar colour still reads through Perl's darker bands
 local GLOW_PAD = 0                                   -- stays inside the 1px outline
 
 local function AcquireGlow(uf, hb)
@@ -462,24 +464,27 @@ local function AcquireGlow(uf, hb)
 	tex:SetTexture(GLOW_TEXTURE)
 	tex:SetHorizTile(true)
 	tex:SetVertTile(false)
-	tex:SetBlendMode("ADD")
+	tex:SetBlendMode("BLEND")          -- normal alpha blend: the texture body COVERS the bar in the contrast colour
 	tex:SetAlpha(GLOW_ALPHA)
 	tex:Hide()
 	local scrollGroup = tex:CreateAnimationGroup()
 	scrollGroup:SetLooping("REPEAT")
 	local scroll = scrollGroup:CreateAnimation("TextureCoordTranslation")
-	-- The tile is mapped once across the bar (U 0..1), so an offset of -1 per cycle moves the
-	-- single band the full bar width left-to-right.
+	-- One tile-width of travel per cycle; with the texture tiled, the pattern streams continuously.
 	scroll:SetOffset(-1, 0); scroll:SetDuration(GLOW_SWEEP_SEC)
 	uf.vpsGlow = { tex = tex, scrollGroup = scrollGroup }
 	return uf.vpsGlow
 end
 
 local function LayoutGlow(glow, hb)
+	local w = hb:GetWidth()
+	if not w or w <= 0 then return end
 	glow.tex:ClearAllPoints()
 	PixelUtil.SetPoint(glow.tex, "TOPLEFT", hb, "TOPLEFT", -GLOW_PAD, GLOW_PAD)
 	PixelUtil.SetPoint(glow.tex, "BOTTOMRIGHT", hb, "BOTTOMRIGHT", GLOW_PAD, -GLOW_PAD)
-	glow.tex:SetTexCoord(0, 1, 0, 1)     -- one band per bar width
+	-- Tile perl.tga at its native 64px period so the streaks keep their shape on any bar width.
+	local repeats = math.max(1, w / GLOW_TILE_PX)
+	glow.tex:SetTexCoord(0, repeats, 0, 1)
 end
 
 -- Overlay colour. "animatedRed": the complement of the bar's own fill colour - yellow over a
