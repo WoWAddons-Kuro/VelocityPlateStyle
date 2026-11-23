@@ -23,7 +23,7 @@ VPS.BUILTIN_ELEMENT_IDS = { name = true, level = true, health = true, healthpct 
 VPS.DEFAULTS = {
 	Version = VPS_DB_VERSION,
 	barTexture = "VPS:Flat",      -- key into VPS.Textures (Textures.lua)
-	barHeight = 12,               -- px, 6..24
+	barHeight = 12,               -- px, 1..24
 	backingAlpha = 0.6,           -- alpha of the black backing behind the fill
 	targetColor = { 1, 1, 1, 1 },
 	targetThickness = 2,          -- px, 1..4

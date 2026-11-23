@@ -191,7 +191,7 @@ local function CreateOptions()
 		for _, t in ipairs(VPS.Textures.List()) do out[#out + 1] = { key = t.key, name = t.name } end
 		return out
 	end), 48, -4)
-	st:Add(Slider(st, "VelocityPlateStyleBarHeight", "barHeight", 6, 24, 1, function(v) return "Bar height: " .. v .. " px" end), 44, -4)
+	st:Add(Slider(st, "VelocityPlateStyleBarHeight", "barHeight", 1, 24, 1, function(v) return "Bar height: " .. v .. " px" end), 44, -4)
 	st:Add(Slider(st, "VelocityPlateStyleBackingAlpha", "backingAlpha", 0, 100, 5,
 		function(v) return string.format("Backing darkness: %d%%", math.floor(v * 100 + 0.5)) end, 100), 44, -4)
 	st:Finish()
