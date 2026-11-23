@@ -27,9 +27,10 @@
       first**), bar height, backing alpha, border darkness, target border, level number with difficulty colour and stock
       classification icon re-anchored, GotJunk-style canvas options page, R7 stand-down. **No threat/aggro features.**
       In-game findings folded into "Era 1.15.9 restricted regions" and "Text elements" below.
-- [ ] **M2 — Text element layout grid.** `db.elements` model, `VPS.Format` token expander, Skin flow-layout engine
+- [x] **M2 — Text element layout grid (built 2026-11-23, cd96c33 + 03573ed; Era verification pending).** `db.elements` model, `VPS.Format` token expander, Skin flow-layout engine
       for the six anchor slots, stock name/health/level alpha-zeroed, Era `UNIT_HEALTH` path, options grid with
       reorder arrows + create-custom-element box, Classic Clean retired (`barStyle`/`borderDarken` dropped).
+      Plates in Blizzard's show-only-name / widgets-only mode are left fully stock (`Skin.IsBarMode`).
 - [ ] **M2b — Visual texture picker** (per-row-textured list for textures; fonts if a font column is added later).
 - [ ] **M3 — Threat level (classification) modes + danger emphasis.** Text / Frame / Icon+Frame modes, danger threshold.
 - [ ] **M4 — Forever client file + verification pass** on 1.60.1 (R5 path throughout).

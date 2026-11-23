@@ -129,15 +129,18 @@ local function CreateOptions()
 			for _, it in ipairs(items()) do if it.key == db()[key] then return it.name end end
 			return tostring(db()[key])
 		end
-		UIDropDownMenu_Initialize(dd, function(self, level)
+		local function Init(self, level)
 			for _, it in ipairs(items()) do
 				local info = UIDropDownMenu_CreateInfo()
 				info.text = it.name; info.checked = (it.key == db()[key])
 				info.func = function() db()[key] = it.key; UIDropDownMenu_SetText(dd, it.name); Changed() end
 				UIDropDownMenu_AddButton(info, level)
 			end
-		end)
-		holder.Update = function() UIDropDownMenu_SetText(dd, CurrentName()) end
+		end
+		UIDropDownMenu_Initialize(dd, Init)
+		-- UIDropDownMenu_SetText only sticks once the menu has been initialised with a
+		-- selection context; re-initialise before every SetText so the first show is right.
+		holder.Update = function() UIDropDownMenu_Initialize(dd, Init); UIDropDownMenu_SetText(dd, CurrentName()) end
 		return Track(holder)
 	end
 
