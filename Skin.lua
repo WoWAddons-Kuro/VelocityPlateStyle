@@ -434,42 +434,60 @@ end
 
 --------------------------------------------------------------------------------
 -- Over-level highlight: unitLevel >= playerLevel + threshold, or skull.
--- "animated" / "animatedRed": Blizzard's action-button spell-activation proc glow
--- (ActionButtonSpellAlertTemplate: Proc-Start then looping Proc-Loop flipbook), sized to the
--- bar and vertex-coloured. "red": the 1px outline turns red, no animation.
+--
+-- "animated" / "animatedRed": our own marching-stripe glow. Assets\hatch.tga (diagonal stripes,
+-- tiles in U) is laid over the bar rect with SetHorizTile(true) and scrolled by a looping
+-- TextureCoordTranslation animation - the same client-side mechanism Blizzard uses for the stock
+-- aggro flare (AggroHighlightScrollAnim) - with an alpha pulse on top. Additive blend, gold or
+-- vertex-tinted red. No Lua runs per frame (R4). The 10.x proc flipbook was tried first and
+-- rejected: its orbiting sparks smear to a static tint on a wide thin bar (58cb482).
+-- Red modes also turn the 1px outline and the name element red. "red": static, no glow.
 --------------------------------------------------------------------------------
 local OVER_LEVEL_RED = { 1, 0.15, 0.1 }
 local OVER_LEVEL_GOLD = { 1, 0.82, 0.2 }
-local GLOW_PAD_X, GLOW_PAD_Y = 1.35, 2.6     -- the proc atlas has transparent margin; overscan so the ring hugs the bar
+local GLOW_TEXTURE = "Interface\\AddOns\\" .. ADDON .. "\\Assets\\hatch.tga"
+local GLOW_TILE_PX = 64                              -- hatch.tga width; one U repeat
+local GLOW_SCROLL_SEC = 0.9                          -- time for the stripes to travel one tile
+local GLOW_PULSE_LO, GLOW_PULSE_HI, GLOW_PULSE_SEC = 0.45, 1.0, 0.6
+local GLOW_PAD = 1                                   -- px beyond the bar on each side (over the 1px outline)
 
 local function AcquireGlow(uf, hb)
-	local glow = uf.vpsGlow
-	if glow then return glow end
-	local ok, frame = pcall(CreateFrame, "Frame", nil, hb, "ActionButtonSpellAlertTemplate")
-	if not ok or not frame or not frame.ProcLoopFlipbook then
-		Skin.glowError = ok and "template created but has no ProcLoopFlipbook" or tostring(frame)
-		return nil
-	end
-	Skin.glowError = nil
-	frame:SetFrameLevel(hb:GetFrameLevel())        -- below foreign icons (which sit on higher-level frames)
-	frame:Hide()
-	uf.vpsGlow = frame
-	return frame
+	if uf.vpsGlow then return uf.vpsGlow end
+	-- ARTWORK sublevel 1: over the fill, under our OVERLAY text, beneath foreign decorator frames.
+	local tex = hb:CreateTexture(nil, "ARTWORK", nil, 1)
+	tex:SetTexture(GLOW_TEXTURE)
+	tex:SetHorizTile(true)
+	tex:SetVertTile(false)
+	tex:SetBlendMode("ADD")
+	tex:Hide()
+	-- Two independent groups: a group's orders run in sequence, so a scroll sharing a group with
+	-- the two-leg pulse would idle during the second leg and stutter.
+	local scrollGroup = tex:CreateAnimationGroup()
+	scrollGroup:SetLooping("REPEAT")
+	local scroll = scrollGroup:CreateAnimation("TextureCoordTranslation")
+	scroll:SetOffset(1, 0); scroll:SetDuration(GLOW_SCROLL_SEC)
+	local pulseGroup = tex:CreateAnimationGroup()
+	pulseGroup:SetLooping("BOUNCE")
+	local pulse = pulseGroup:CreateAnimation("Alpha")
+	pulse:SetFromAlpha(GLOW_PULSE_HI); pulse:SetToAlpha(GLOW_PULSE_LO); pulse:SetDuration(GLOW_PULSE_SEC); pulse:SetSmoothing("IN_OUT")
+	uf.vpsGlow = { tex = tex, scrollGroup = scrollGroup, pulseGroup = pulseGroup }
+	return uf.vpsGlow
 end
 
 local function LayoutGlow(glow, hb)
-	-- Proc flipbook frames are square-ish art meant for a 1.4x button overscan; stretch to the bar.
 	local w, h = hb:GetWidth(), hb:GetHeight()
 	if not w or w <= 0 then return end
-	glow:ClearAllPoints()
-	glow:SetPoint("CENTER", hb, "CENTER", 0, 0)
-	glow:SetSize(w * GLOW_PAD_X, math.max(h * GLOW_PAD_Y, 24))
-	glow.ProcStartFlipbook:SetSize(w * GLOW_PAD_X, math.max(h * GLOW_PAD_Y, 24))
+	glow.tex:ClearAllPoints()
+	PixelUtil.SetPoint(glow.tex, "TOPLEFT", hb, "TOPLEFT", -GLOW_PAD, GLOW_PAD)
+	PixelUtil.SetPoint(glow.tex, "BOTTOMRIGHT", hb, "BOTTOMRIGHT", GLOW_PAD, -GLOW_PAD)
+	-- Keep the stripe period at GLOW_TILE_PX regardless of bar width: U range = width / tile.
+	local repeats = math.max(1, (w + 2 * GLOW_PAD) / GLOW_TILE_PX)
+	glow.tex:SetTexCoord(0, repeats, 0, 1)
 end
 
 local function GlowColor(mode)
 	if mode == "animatedRed" then return OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3] end
-	return 1, 1, 1      -- atlas art is gold already
+	return OVER_LEVEL_GOLD[1], OVER_LEVEL_GOLD[2], OVER_LEVEL_GOLD[3]
 end
 
 function Skin.IsOverLevel(unit)
@@ -481,65 +499,31 @@ function Skin.IsOverLevel(unit)
 	return level >= (UnitLevel("player") or 1) + (db().overLevelThreshold or 3)
 end
 
--- Fallback glow when ActionButtonSpellAlertTemplate is unavailable: a 3px border pulsing in
--- alpha via an AnimationGroup. Never silently absent.
-local function AcquirePulse(uf, hb)
-	if uf.vpsPulse then return uf.vpsPulse end
-	local edges = AcquireEdges(hb, "vpsPulseEdges", "BACKGROUND", -4)
-	local ag = hb:CreateAnimationGroup()
-	ag:SetLooping("BOUNCE")
-	for _, t in pairs(edges) do
-		local a = ag:CreateAnimation("Alpha"); a:SetTarget(t); a:SetFromAlpha(1); a:SetToAlpha(0.25); a:SetDuration(0.45)
-	end
-	uf.vpsPulse = { edges = edges, anim = ag }
-	return uf.vpsPulse
-end
-
 function Skin.ApplyOverLevel(uf, unit)
 	local hb = Client.HealthBar(uf)
 	if not hb or not uf.vpsOutline then return end
 	local mode = db().overLevelMode or "none"
 	local on = mode ~= "none" and Skin.IsOverLevel(unit)
 	local isRed = mode == "red" or mode == "animatedRed"
-	-- outline recolour: every red mode turns the 1px outline red so the cue reads even when the
-	-- glow is subtle at bar scale
+	-- every red mode turns the 1px outline red so the cue reads at any bar size
 	if on and isRed then SetEdges(uf.vpsOutline, OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3], 1, true)
 	else SetEdges(uf.vpsOutline, 0, 0, 0, 1, true) end
 	-- red modes also tint the name element (ApplyTexts has just set the configured colour otherwise)
 	local nameFs = uf.vpsText and uf.vpsText.name
 	if nameFs and on and isRed then nameFs:SetTextColor(OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3]) end
-	-- animated proc glow
+	-- pulsing glow
 	local wantGlow = on and (mode == "animated" or mode == "animatedRed")
 	local glow = uf.vpsGlow or (wantGlow and AcquireGlow(uf, hb))
-	if glow and wantGlow then
-		local r, g, b = GlowColor(mode)
-		glow.ProcStartFlipbook:SetVertexColor(r, g, b)
-		glow.ProcLoopFlipbook:SetVertexColor(r, g, b)
+	if not glow then return end
+	if wantGlow then
+		glow.tex:SetVertexColor(GlowColor(mode))
 		LayoutGlow(glow, hb)
-		if not glow:IsShown() then
-			glow:Show()
-			glow.ProcStartAnim:Stop(); glow.ProcLoop:Stop()
-			glow.ProcLoop:Play()                 -- skip the burst; plates pop in and out constantly
-		end
-	elseif glow and glow:IsShown() then
-		glow.ProcLoop:Stop(); glow.ProcStartAnim:Stop()
-		glow:Hide()
-	end
-	-- fallback pulse when the template is unavailable on this client
-	local wantPulse = wantGlow and not glow
-	local pulse = uf.vpsPulse or (wantPulse and AcquirePulse(uf, hb))
-	if pulse then
-		if wantPulse then
-			local r, g, b
-			if isRed then r, g, b = OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3]
-			else r, g, b = OVER_LEVEL_GOLD[1], OVER_LEVEL_GOLD[2], OVER_LEVEL_GOLD[3] end
-			LayoutEdges(pulse.edges, hb, 3, 1 + (db().targetThickness or 2))
-			SetEdges(pulse.edges, r, g, b, 1, true)
-			if not pulse.anim:IsPlaying() then pulse.anim:Play() end
-		else
-			pulse.anim:Stop()
-			SetEdges(pulse.edges, 1, 1, 1, 1, false)
-		end
+		glow.tex:Show()
+		if not glow.scrollGroup:IsPlaying() then glow.scrollGroup:Play() end
+		if not glow.pulseGroup:IsPlaying() then glow.pulseGroup:Play() end
+	elseif glow.tex:IsShown() then
+		glow.scrollGroup:Stop(); glow.pulseGroup:Stop()
+		glow.tex:Hide()
 	end
 end
 

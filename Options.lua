@@ -200,7 +200,7 @@ local function CreateOptions()
 	local tg = Section("Target Highlight")
 	tg:Add(ColorRow(tg, "targetColor", "Target border colour", true), 24, -6)
 	tg:Add(Slider(tg, "VelocityPlateStyleTargetThickness", "targetThickness", 1, 4, 1, function(v) return "Target border thickness: " .. v .. " px" end), 44, -6)
-	local OVER_LEVEL_LABEL = { none = "None", animated = "Animated glow (gold)", red = "Red outline", animatedRed = "Animated glow (red)" }
+	local OVER_LEVEL_LABEL = { none = "None", animated = "Pulsing glow (gold)", red = "Red outline", animatedRed = "Pulsing glow (red)" }
 	tg:Add(Dropdown(tg, "VelocityPlateStyleOverLevelDropdown", "overLevelMode", "Over-leveled highlight", function()
 		local out = {}
 		for _, m in ipairs(VPS.OVER_LEVEL_MODES) do out[#out + 1] = { key = m, name = OVER_LEVEL_LABEL[m] } end
@@ -441,10 +441,10 @@ SlashCmdList.VELOCITYPLATESTYLE = function(msg)
 				fs and (fs:GetText() or "") or "-", fs and tostring(fs.vpsWidth) or "-"))
 		end
 		local glow = uf.vpsGlow
-		VPS.Print(string.format("overlevel: mode=%s threshold=%s unitLevel=%s playerLevel=%s verdict=%s glow=%s shown=%s err=%s",
+		VPS.Print(string.format("overlevel: mode=%s threshold=%s unitLevel=%s playerLevel=%s verdict=%s glow=%s shown=%s scrolling=%s",
 			tostring(VPS.db.overLevelMode), tostring(VPS.db.overLevelThreshold), tostring(UnitLevel("target")), tostring(UnitLevel("player")),
-			tostring(VPS.Skin.IsOverLevel("target")), glow and "created" or "nil", glow and tostring(glow:IsShown()) or "-",
-			tostring(VPS.Skin.glowError)))
+			tostring(VPS.Skin.IsOverLevel("target")), glow and "created" or "nil", glow and tostring(glow.tex:IsShown()) or "-",
+			glow and tostring(glow.scrollGroup:IsPlaying()) or "-"))
 		VPS.Print("stock: useClassicHealthBar=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.useClassicHealthBar) .. " nameAnchorStyle=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.unitNameAnchorStyle))
 	else
 		VPS.Print("/vps  |  /vps status  |  /vps reset  |  /vps debug (target's plate)")
