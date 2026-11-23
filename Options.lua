@@ -196,10 +196,18 @@ local function CreateOptions()
 		function(v) return string.format("Backing darkness: %d%%", math.floor(v * 100 + 0.5)) end, 100), 44, -4)
 	st:Finish()
 
-	-- Section: Target -----------------------------------------------------------------
-	local tg = Section("Target")
+	-- Section: Target Highlight --------------------------------------------------------
+	local tg = Section("Target Highlight")
 	tg:Add(ColorRow(tg, "targetColor", "Target border colour", true), 24, -6)
 	tg:Add(Slider(tg, "VelocityPlateStyleTargetThickness", "targetThickness", 1, 4, 1, function(v) return "Target border thickness: " .. v .. " px" end), 44, -6)
+	local OVER_LEVEL_LABEL = { none = "None", animated = "Animated glow (gold)", red = "Red outline", animatedRed = "Animated glow (red)" }
+	tg:Add(Dropdown(tg, "VelocityPlateStyleOverLevelDropdown", "overLevelMode", "Over-leveled highlight", function()
+		local out = {}
+		for _, m in ipairs(VPS.OVER_LEVEL_MODES) do out[#out + 1] = { key = m, name = OVER_LEVEL_LABEL[m] } end
+		return out
+	end), 48, -6)
+	tg:Add(Slider(tg, "VelocityPlateStyleOverLevelThreshold", "overLevelThreshold", 1, 10, 1,
+		function(v) return string.format("Over-leveled when the mob is %d+ levels above you (skull always counts)", v) end), 44, -4)
 	tg:Finish()
 
 	-- Section: Text (the element grid) -------------------------------------------------

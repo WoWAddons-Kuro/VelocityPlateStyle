@@ -27,6 +27,9 @@ VPS.DEFAULTS = {
 	backingAlpha = 0.6,           -- alpha of the black backing behind the fill
 	targetColor = { 1, 1, 1, 1 },
 	targetThickness = 2,          -- px, 1..4
+	overLevelMode = "none",       -- VPS_OverLevelMode: none | animated | red | animatedRed  (spell-activation proc glow,
+	                              -- gold or tinted red; "red" alone = static red outline)
+	overLevelThreshold = 3,       -- unitLevel >= playerLevel + N (or skull) lights the over-level highlight
 	nextCustomId = 1,             -- counter for custom element ids "c<n>"
 	-- elements: filled by InitDB from DEFAULT_ELEMENTS (arrays are not merged by CopyDefaults)
 }
@@ -37,6 +40,7 @@ VPS.ALIGNS_H = { "left", "center", "right" }         -- for above / below / insi
 VPS.ALIGNS_V = { "top", "middle", "bottom" }         -- for left / right side columns (baseline alignment)
 VPS.COLOR_MODES = { "stock", "white", "difficulty", "class", "custom" }
 VPS.SIZE_MIN, VPS.SIZE_MAX = 6, 20
+VPS.OVER_LEVEL_MODES = { "none", "animated", "red", "animatedRed" }
 
 VPS.styleVersion = 1          -- bumped on every settings change; uf.vpsStyled ~= styleVersion => restyle
 VPS.standDown = nil           -- name of the plate-replacement addon that made us stand down, or nil

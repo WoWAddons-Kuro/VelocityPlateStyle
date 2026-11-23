@@ -428,7 +428,80 @@ end
 
 function Skin.ApplyUnit(uf, unit)
 	Skin.ApplyTarget(uf, unit)
-	Skin.ApplyTexts(uf, unit)
+	Skin.ApplyTexts(uf, unit)        -- also refreshes the over-level highlight
+end
+
+--------------------------------------------------------------------------------
+-- Over-level highlight: unitLevel >= playerLevel + threshold, or skull.
+-- "animated" / "animatedRed": Blizzard's action-button spell-activation proc glow
+-- (ActionButtonSpellAlertTemplate: Proc-Start then looping Proc-Loop flipbook), sized to the
+-- bar and vertex-coloured. "red": the 1px outline turns red, no animation.
+--------------------------------------------------------------------------------
+local OVER_LEVEL_RED = { 1, 0.15, 0.1 }
+local GLOW_PAD_X, GLOW_PAD_Y = 1.35, 2.6     -- the proc atlas has transparent margin; overscan so the ring hugs the bar
+
+local function AcquireGlow(uf, hb)
+	local glow = uf.vpsGlow
+	if glow then return glow end
+	if not ActionButtonSpellAlertTemplate and not _G.ActionButtonSpellAlertMixin then return nil end
+	local ok, frame = pcall(CreateFrame, "Frame", nil, hb, "ActionButtonSpellAlertTemplate")
+	if not ok or not frame then return nil end
+	frame:SetFrameLevel(hb:GetFrameLevel())        -- below foreign icons (which sit on higher-level frames)
+	frame:Hide()
+	uf.vpsGlow = frame
+	return frame
+end
+
+local function LayoutGlow(glow, hb)
+	-- Proc flipbook frames are square-ish art meant for a 1.4x button overscan; stretch to the bar.
+	local w, h = hb:GetWidth(), hb:GetHeight()
+	if not w or w <= 0 then return end
+	glow:ClearAllPoints()
+	glow:SetPoint("CENTER", hb, "CENTER", 0, 0)
+	glow:SetSize(w * GLOW_PAD_X, math.max(h * GLOW_PAD_Y, 24))
+	glow.ProcStartFlipbook:SetSize(w * GLOW_PAD_X, math.max(h * GLOW_PAD_Y, 24))
+end
+
+local function GlowColor(mode)
+	if mode == "animatedRed" then return OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3] end
+	return 1, 1, 1      -- atlas art is gold already
+end
+
+function Skin.IsOverLevel(unit)
+	local level = Plain(UnitLevel(unit))
+	if level == nil then return false end
+	if level < 0 then return true end
+	local attackable = Plain(UnitCanAttack("player", unit))
+	if attackable == false then return false end
+	return level >= (UnitLevel("player") or 1) + (db().overLevelThreshold or 3)
+end
+
+function Skin.ApplyOverLevel(uf, unit)
+	local hb = Client.HealthBar(uf)
+	if not hb or not uf.vpsOutline then return end
+	local mode = db().overLevelMode or "none"
+	local on = mode ~= "none" and Skin.IsOverLevel(unit)
+	-- static outline recolour
+	if on and mode == "red" then SetEdges(uf.vpsOutline, OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3], 1, true)
+	else SetEdges(uf.vpsOutline, 0, 0, 0, 1, true) end
+	-- animated proc glow
+	local wantGlow = on and (mode == "animated" or mode == "animatedRed")
+	local glow = uf.vpsGlow or (wantGlow and AcquireGlow(uf, hb))
+	if not glow then return end
+	if wantGlow then
+		local r, g, b = GlowColor(mode)
+		glow.ProcStartFlipbook:SetVertexColor(r, g, b)
+		glow.ProcLoopFlipbook:SetVertexColor(r, g, b)
+		LayoutGlow(glow, hb)
+		if not glow:IsShown() then
+			glow:Show()
+			glow.ProcStartAnim:Stop(); glow.ProcLoop:Stop()
+			glow.ProcLoop:Play()                 -- skip the burst; plates pop in and out constantly
+		end
+	elseif glow:IsShown() then
+		glow.ProcLoop:Stop(); glow.ProcStartAnim:Stop()
+		glow:Hide()
+	end
 end
 
 -- The frame is going back to the pool: per-unit cues off so the next unit starts clean.
