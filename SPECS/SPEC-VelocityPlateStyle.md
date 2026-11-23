@@ -17,7 +17,7 @@
 
 ## Milestones
 
-- [ ] **M0 — Research (Researching phase, before any code).** Fetch `Blizzard_NamePlates` + `CompactUnitFrame.lua` (+ `NamePlates.xml`)
+- [x] **M0 — Research (done 2026-11-22).** Fetch `Blizzard_NamePlates` + `CompactUnitFrame.lua` (+ `NamePlates.xml`)
       for the `classic_era` and Forever/Camelot source branches into `_ref\blizzard\classic_era\nameplates\` and
       `_ref\blizzard\forever\nameplates\`; write `AddonManagement\_EXTERNAL_APIS\wow_nameplate_unitframe_regions.md`
       with the confirmed region names per client (the ClientMap table below) and the list of stock functions that

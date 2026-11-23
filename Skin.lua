@@ -289,8 +289,12 @@ function Skin.ReapplyName(uf)
 	if not hb then return end
 	if not IsModern() then return end          -- Classic Clean keeps the stock layout
 	local container = Client.HealthBarContainer(uf) or hb
+	-- Era 1.15.9: the stock name FontString is a RESTRICTED region for addon code; any
+	-- measurement (GetPoint/GetWidth/GetEffectiveScale) raises "Can't measure restricted
+	-- regions". PixelUtil.SetPoint measures internally and therefore silently did nothing.
+	-- Plain SetPoint does not measure and is allowed.
 	name:ClearAllPoints()
 	name:SetJustifyH("CENTER")
-	PixelUtil.SetPoint(name, "BOTTOMLEFT", container, "TOPLEFT", 0, 2)
-	PixelUtil.SetPoint(name, "BOTTOMRIGHT", container, "TOPRIGHT", 0, 2)
+	name:SetPoint("BOTTOMLEFT", container, "TOPLEFT", 0, 2)
+	name:SetPoint("BOTTOMRIGHT", container, "TOPRIGHT", 0, 2)
 end

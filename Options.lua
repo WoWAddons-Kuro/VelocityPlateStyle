@@ -278,9 +278,11 @@ SlashCmdList.VELOCITYPLATESTYLE = function(msg)
 		if name then
 			VPS.Print(string.format("name justify=%s points=%d shown=%s", tostring(name:GetJustifyH()), name:GetNumPoints(), tostring(name:IsShown())))
 			for i = 1, name:GetNumPoints() do
-				local p, rel, rp, x, y = name:GetPoint(i)
-				local relName = rel and (rel.GetName and rel:GetName() or (rel == VPS.Client.HealthBarContainer(uf) and "HealthBarsContainer") or (rel == VPS.Client.HealthBar(uf) and "healthBar") or "?") or "nil"
-				VPS.Print(string.format("  %s -> %s.%s (%.1f, %.1f)", p, relName, tostring(rp), x or 0, y or 0))
+				-- Era: the stock name is a restricted region; GetPoint raises "Can't measure".
+				local ok, p, rel, rp, x, y = pcall(name.GetPoint, name, i)
+				if not ok then VPS.Print("  point " .. i .. ": restricted region (cannot measure)"); break end
+				local relName = rel and ((rel == VPS.Client.HealthBarContainer(uf) and "HealthBarsContainer") or (rel == VPS.Client.HealthBar(uf) and "healthBar") or (rel.GetName and rel:GetName()) or "?") or "nil"
+				VPS.Print(string.format("  %s -> %s.%s (%.1f, %.1f)", tostring(p), relName, tostring(rp), x or 0, y or 0))
 			end
 		end
 		if uf.vpsLevel then
