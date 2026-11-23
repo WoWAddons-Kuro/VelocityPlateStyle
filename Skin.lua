@@ -435,22 +435,21 @@ end
 --------------------------------------------------------------------------------
 -- Over-level highlight: unitLevel >= playerLevel + threshold, or skull.
 --
--- "animated" / "animatedRed": a "Perl"-style sheen. Assets\sweep.tga is ONE soft bright band
--- (raised-cosine, slight diagonal lean) on a transparent 128px tile; laid over the bar rect with
--- SetHorizTile(true) and scrolled by a looping TextureCoordTranslation - the same client-side
--- mechanism Blizzard uses for the stock aggro flare - so a single highlight travels left-to-right
--- across the bar every cycle, like light sliding over the SharedMedia "Perl" statusbar. Additive
--- blend: white over the bar's own colour reads as a bright sheen of that colour; the gold mode
--- tints it warm. No Lua runs per frame (R4).
--- Rejected first: the 10.x proc flipbook (smears to a static tint on a bar, 58cb482) and dense
--- diagonal stripes (reads as texture noise, not motion, 9f5b39e).
+-- "animated" / "animatedRed" (owner's spec, 2026-11-23): the bar keeps Blizzard's own fill colour
+-- (red hostile / yellow neutral) and we ADD one layer over it: the SharedMedia "Perl" statusbar
+-- texture (Assets\perl.tga, from EasyFrames), vertex-coloured the COMPLEMENTARY colour - yellow
+-- over a red bar, red over a yellow bar - additive blend, with its UVs scrolled left-to-right by a
+-- looping TextureCoordTranslation (the client-side mechanism Blizzard's own aggro flare uses).
+-- No Lua runs per frame (R4). "animated" = the same, but a fixed gold overlay instead of the
+-- complementary colour. Rejected on the way here: the 10.x proc flipbook (58cb482), dense
+-- diagonal stripes (9f5b39e), a single white sweep band (0d5e14f).
 -- Red modes also turn the 1px outline and the name element red. "red": static, no sheen.
 --------------------------------------------------------------------------------
 local OVER_LEVEL_RED = { 1, 0.15, 0.1 }
-local OVER_LEVEL_GOLD = { 1, 0.82, 0.2 }
-local GLOW_TEXTURE = "Interface\\AddOns\\" .. ADDON .. "\\Assets\\sweep.tga"
-local GLOW_SWEEP_SEC = 1.1                           -- one highlight crosses the whole bar per cycle
-local GLOW_ALPHA = 0.85
+local OVER_LEVEL_YELLOW = { 1, 0.85, 0.1 }
+local GLOW_TEXTURE = "Interface\\AddOns\\" .. ADDON .. "\\Assets\\perl.tga"
+local GLOW_SWEEP_SEC = 1.4                           -- time for the Perl pattern to travel one full bar width
+local GLOW_ALPHA = 0.9
 local GLOW_PAD = 0                                   -- stays inside the 1px outline
 
 local function AcquireGlow(uf, hb)
@@ -480,9 +479,17 @@ local function LayoutGlow(glow, hb)
 	glow.tex:SetTexCoord(0, 1, 0, 1)     -- one band per bar width
 end
 
-local function GlowColor(mode)
-	if mode == "animatedRed" then return OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3] end
-	return OVER_LEVEL_GOLD[1], OVER_LEVEL_GOLD[2], OVER_LEVEL_GOLD[3]
+-- Overlay colour. "animatedRed": the complement of the bar's own fill colour - yellow over a
+-- red (hostile) bar, red over a yellow (neutral) bar - so the sweep contrasts whatever Blizzard
+-- painted. "animated": a fixed yellow. Reading the StatusBar's colour is not a measurement.
+local function GlowColor(mode, hb)
+	if mode ~= "animatedRed" then return OVER_LEVEL_YELLOW[1], OVER_LEVEL_YELLOW[2], OVER_LEVEL_YELLOW[3] end
+	local ok, r, g = pcall(hb.GetStatusBarColor, hb)
+	-- yellow-ish bar (neutral): g high relative to r  ->  red overlay. Otherwise -> yellow overlay.
+	if ok and r and g and g > 0.5 then
+		return OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3]
+	end
+	return OVER_LEVEL_YELLOW[1], OVER_LEVEL_YELLOW[2], OVER_LEVEL_YELLOW[3]
 end
 
 function Skin.IsOverLevel(unit)
@@ -511,7 +518,7 @@ function Skin.ApplyOverLevel(uf, unit)
 	local glow = uf.vpsGlow or (wantGlow and AcquireGlow(uf, hb))
 	if not glow then return end
 	if wantGlow then
-		glow.tex:SetVertexColor(GlowColor(mode))
+		glow.tex:SetVertexColor(GlowColor(mode, hb))
 		LayoutGlow(glow, hb)
 		glow.tex:Show()
 		if not glow.scrollGroup:IsPlaying() then glow.scrollGroup:Play() end
