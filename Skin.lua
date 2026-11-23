@@ -205,6 +205,7 @@ function Skin.ApplyStatic(uf)
 	ApplyStockTargetCueAlpha(uf)
 	ApplyLevelPlacement(uf)
 	LayoutEdges(uf.vpsTarget, hb, db().targetThickness, IsModern() and 1 or 2)
+	Skin.ReapplyName(uf)
 end
 
 --------------------------------------------------------------------------------

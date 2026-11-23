@@ -269,8 +269,27 @@ SlashCmdList.VELOCITYPLATESTYLE = function(msg)
 		VPS.Print(VPS.StatusText())
 	elseif msg == "reset" then
 		VPS.ResetToDefaults(); VPS.Print("settings reset to defaults")
+	elseif msg == "debug" then
+		-- Dumps what we did to the TARGET's plate so layout problems can be read off chat.
+		local uf = VPS.UnitFrameForUnit("target")
+		if not uf then VPS.Print("target has no (non-forbidden) nameplate"); return end
+		local name = VPS.Client.NameText(uf)
+		VPS.Print(string.format("styled=%s hooked=%s version=%s", tostring(uf.vpsStyled), tostring(uf.vpsHooked), tostring(VPS.styleVersion)))
+		if name then
+			VPS.Print(string.format("name justify=%s points=%d shown=%s", tostring(name:GetJustifyH()), name:GetNumPoints(), tostring(name:IsShown())))
+			for i = 1, name:GetNumPoints() do
+				local p, rel, rp, x, y = name:GetPoint(i)
+				local relName = rel and (rel.GetName and rel:GetName() or (rel == VPS.Client.HealthBarContainer(uf) and "HealthBarsContainer") or (rel == VPS.Client.HealthBar(uf) and "healthBar") or "?") or "nil"
+				VPS.Print(string.format("  %s -> %s.%s (%.1f, %.1f)", p, relName, tostring(rp), x or 0, y or 0))
+			end
+		end
+		if uf.vpsLevel then
+			local path, size, flags = uf.vpsLevel:GetFont()
+			VPS.Print(string.format("level text=%q font=%s size=%s flags=%s", uf.vpsLevel:GetText() or "", tostring(path), tostring(size), tostring(flags)))
+		end
+		VPS.Print("stock: useClassicHealthBar=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.useClassicHealthBar) .. " nameAnchorStyle=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.unitNameAnchorStyle))
 	else
-		VPS.Print("/vps  |  /vps status  |  /vps reset")
+		VPS.Print("/vps  |  /vps status  |  /vps reset  |  /vps debug (target's plate)")
 	end
 end
 
