@@ -40,7 +40,9 @@
       Lesson: XML template names are not Lua globals — never guard on them.
 - [ ] **M3 — Threat level (classification) modes + danger emphasis.** Text / Frame / Icon+Frame modes, danger threshold.
 - [ ] **M4 — Forever client file + verification pass** on 1.60.1 (R5 path throughout).
-- [ ] **M5 — Blizzard-settings mirror section** (CVar-bound controls, per-client CVar list).
+- [x] **M5 — Blizzard nameplate settings (done 2026-11-23, 9b87713) [D: button, not mirror].** A "Blizzard Nameplate
+      Settings" section above Reset with one button that opens the game's own Nameplates page via
+      `Settings.NAMEPLATE_OPTIONS_CATEGORY_ID`. The CVar mirror is dropped: one writer per setting, R1 stays absolute.
 - [ ] **M6 — Aggro indicator.** Era: Lua threat path. Forever: restyle of the stock aggro highlight only.
 - [ ] **M7 — Compatibility pass** (Questie, raid markers, stock cast bar/auras), publish via `cmd\release.cmd` (owner).
 - [ ] **M8 (deferred) — Retail `_Mainline.toc` + client file** when a retail install exists.
