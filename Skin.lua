@@ -454,8 +454,11 @@ local GLOW_PAD = 0                                   -- stays inside the 1px out
 
 local function AcquireGlow(uf, hb)
 	if uf.vpsGlow then return uf.vpsGlow end
-	-- ARTWORK sublevel 1: over the fill, under our OVERLAY text, beneath foreign decorator frames.
-	local tex = hb:CreateTexture(nil, "ARTWORK", nil, 1)
+	-- OVERLAY sublevel -1: a StatusBar composites its fill ABOVE its BACKGROUND/BORDER/ARTWORK
+	-- regions, so anything meant to sit on top of the fill must be OVERLAY (our text is OVERLAY 0
+	-- and visibly draws over the fill; the same texture on ARTWORK 1 was fully occluded - 3 builds
+	-- of "nothing changed", 9f5b39e..1b57f85).
+	local tex = hb:CreateTexture(nil, "OVERLAY", nil, -1)
 	tex:SetTexture(GLOW_TEXTURE)
 	tex:SetHorizTile(true)
 	tex:SetVertTile(false)
