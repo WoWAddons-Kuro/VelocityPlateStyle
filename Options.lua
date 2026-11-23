@@ -329,21 +329,30 @@ local function CreateOptions()
 
 	local function RenderGrid()
 		local list = db().elements
+		-- On clients with secret values (Forever) health cannot be computed: the Health element adopts
+		-- Blizzard's own health-value string, and Health % has nothing it can show, so its row is hidden.
+		local secret = VPS.Client.HasSecretValues()
+		local shown = 0                 -- grid row slot; list index i is kept for MoveElement
 		for i, e in ipairs(list) do
-			local row = AcquireRow(i)
-			row.element, row.index = e, i
-			row.label:SetText(e.label or e.id)
-			row.up:SetEnabled(i > 1); row.down:SetEnabled(i < #list)
-			row.up:SetAlpha(i > 1 and 1 or 0.3); row.down:SetAlpha(i < #list and 1 or 0.3)
-			row.anchor.Refresh(); row.align.Refresh(); row.size.Refresh(); row.color.Refresh()
-			local custom = e.color == "custom" and e.id ~= "level"
-			row.swatch:SetShown(custom)
-			if custom then local c = e.customColor or { 1, 1, 1 }; row.swatch.tex:SetVertexColor(c[1], c[2], c[3]) end
-			row.delete:SetShown(not VPS.IsBuiltinElement(e.id))
-			row:Show()
+			if not (secret and e.id == "healthpct") then
+				shown = shown + 1
+				local row = AcquireRow(shown)
+				row.element, row.index = e, i
+				row.label:SetText(e.label or e.id)
+				row.up:SetEnabled(i > 1); row.down:SetEnabled(i < #list)
+				row.up:SetAlpha(i > 1 and 1 or 0.3); row.down:SetAlpha(i < #list and 1 or 0.3)
+				row.anchor.Refresh(); row.align.Refresh(); row.size.Refresh(); row.color.Refresh()
+				local custom = e.color == "custom" and e.id ~= "level"
+				row.swatch:SetShown(custom)
+				if custom then local c = e.customColor or { 1, 1, 1 }; row.swatch.tex:SetVertexColor(c[1], c[2], c[3]) end
+				row.delete:SetShown(not VPS.IsBuiltinElement(e.id))
+				-- Forever: the Health row shows Blizzard's value, so its format is not ours to describe.
+				if secret and e.id == "health" then row.label:SetText((e.label or e.id) .. " (game's value)") end
+				row:Show()
+			end
 		end
-		for i = #list + 1, #rows do rows[i]:Hide(); rows[i].element = nil end
-		gridHolder:SetHeight(math.max(ROW_H, #list * ROW_H))
+		for i = shown + 1, #rows do rows[i]:Hide(); rows[i].element = nil end
+		gridHolder:SetHeight(math.max(ROW_H, shown * ROW_H))
 	end
 
 	-- Create custom element ------------------------------------------------------------
@@ -360,13 +369,19 @@ local function CreateOptions()
 	addBtn:SetPoint("LEFT", fmtBox, "RIGHT", 8, 0)
 	tx:Add(nameBox, 20, -6, 44)
 	local tokens = tx:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall"); tokens:SetJustifyH("LEFT"); tokens:SetWidth(GRID_W)
+	local secretClient = VPS.Client.HasSecretValues()
 	tokens:SetText("Tokens: " .. table.concat(VPS.Format.TOKENS, "  ") .. "   Colour codes |cAARRGGBB...|r pass through."
-		.. (VPS.Client.HasSecretValues() and "  On this client [hp] tokens are blank in restricted content." or ""))
+		.. (secretClient and "  On this client the game keeps unit health secret from addons: [hp] [hp%] [hpmax] cannot be used in custom text; "
+			.. "the Health element shows the game's own value instead." or ""))
 	tx:Add(tokens, 14, -6, -44)
 	local function DoAdd()
 		local label = (nameBox:GetText() or ""):match("^%s*(.-)%s*$")
 		local format = (fmtBox:GetText() or ""):match("^%s*(.-)%s*$")
 		if label == "" or format == "" then VPS.Print("give the new element a name and a format, e.g.  Elite  [class+]"); return end
+		if secretClient and VPS.Format.UsesHealth(format) then
+			VPS.Print("health tokens ([hp] [hp%] [hpmax]) cannot be used in custom text on this client - the game keeps unit health secret from addons. Use the built-in Health element instead.")
+			return
+		end
 		VPS.AddCustomElement(label, format)
 		nameBox:SetText(""); fmtBox:SetText(""); nameBox:ClearFocus(); fmtBox:ClearFocus()
 		optionsFrame:Update()

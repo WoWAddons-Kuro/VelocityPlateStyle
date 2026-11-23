@@ -33,6 +33,10 @@ Client.INTERFACE = {
 	"AggroGlowTextures",    -- (uf) -> { Texture, ... }    the stock aggro flare pieces
 	-- Capabilities / helpers ------------------------------------------------------
 	"HasSecretValues",      -- () -> boolean     true on clients where non-player unit values can be secret (BUG 12)
+	"StockHealthValueText", -- (uf) -> FontString|nil  the ONE stock string the game fills with the unit's current health
+	                        --   value when Options > Nameplates > "Health Value" is on (healthBar.RightText). Where
+	                        --   HasSecretValues() is true this is the only way to show health: our Health element
+	                        --   ADOPTS it (re-anchor, re-font) instead of computing [hp]. nil = client has no such string.
 	"StockUsesClassicArt",  -- () -> boolean     true while Blizzard's own "Classic" nameplate style is selected
 	"DifficultyColor",      -- (playerLevel, unitLevel) -> r, g, b
 	"PlateOwnerAddons",     -- () -> { addonName, ... }  plate-replacement addons that trigger the R7 stand-down

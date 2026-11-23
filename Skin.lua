@@ -95,17 +95,37 @@ local function AcquireOwnRegions(uf)
 	return hb
 end
 
--- One FontString per element id, created on demand and parented to the bar.
+-- On clients with secret values (Forever) the Health element cannot compute [hp]: our Health
+-- element ADOPTS the game's own current-health string instead (Client.StockHealthValueText),
+-- re-anchored into the element's slot and re-fonted. Its content is whatever Blizzard writes
+-- there, which is governed by Options > Nameplates > "Health Value". nil elsewhere.
+local function AdoptedHealthText(uf)
+	if not Client.HasSecretValues() then return nil end
+	return Client.StockHealthValueText(uf)
+end
+Skin.AdoptedHealthText = AdoptedHealthText
+
+-- One FontString per element id, created on demand and parented to the bar. The adopted stock
+-- health string stands in for the "health" element where applicable.
 local function AcquireText(uf, hb, id)
 	local fs = uf.vpsText[id]
 	if fs then return fs end
+	if id == "health" then
+		local adopted = AdoptedHealthText(uf)
+		if adopted then
+			adopted.vpsAdopted = true
+			uf.vpsText[id] = adopted
+			return adopted
+		end
+	end
 	fs = uf.vpsTop:CreateFontString(nil, "OVERLAY", TEXT_FONT)
 	fs:SetWordWrap(false)
 	uf.vpsText[id] = fs
 	return fs
 end
 
--- SetFont (re-rasterise at size), never SetTextHeight (stretches, blurry).
+-- SetFont (re-rasterise at size), never SetTextHeight (stretches, blurry). Writes are allowed
+-- on restricted stock regions, so this is safe on the adopted health string too.
 local function ApplyFont(fs, size)
 	local path, _, flags = fs:GetFont()
 	if not path then
@@ -158,11 +178,15 @@ local function ApplyStockTargetCueAlpha(uf)
 end
 
 -- Every stock text we replace with our own elements: name, health strings, level regions.
+-- The adopted health string (Forever) is OURS now and is skipped here; ApplyTexts shows/hides it.
 function Skin.ReapplyStockTexts(uf)
 	if not Skin.IsBarMode(uf) then Skin.RestoreStock(uf); return end
 	local name = Client.NameText(uf)
 	if name then name:SetAlpha(0) end
-	for _, fs in ipairs(Client.HealthTexts(uf) or {}) do fs:SetAlpha(0) end
+	local adopted = AdoptedHealthText(uf)
+	for _, fs in ipairs(Client.HealthTexts(uf) or {}) do
+		if fs ~= adopted then fs:SetAlpha(0) end
+	end
 	for _, region in ipairs(Client.StockLevelRegions(uf) or {}) do region:SetAlpha(0) end
 end
 
@@ -194,7 +218,10 @@ function Skin.RestoreStock(uf)
 	if uf.vpsBacking then uf.vpsBacking:Hide() end
 	if uf.vpsOutline then SetEdges(uf.vpsOutline, 0, 0, 0, 0, false) end
 	if uf.vpsTarget then SetEdges(uf.vpsTarget, 1, 1, 1, 1, false) end
-	if uf.vpsText then for _, fs in pairs(uf.vpsText) do fs:Hide(); fs.vpsVisible = false end end
+	if uf.vpsText then for _, fs in pairs(uf.vpsText) do
+		if fs.vpsAdopted then fs:SetAlpha(1) else fs:Hide() end       -- stock string goes back to stock
+		fs.vpsVisible = false
+	end end
 	uf.vpsStockMode = true
 end
 
@@ -261,26 +288,42 @@ function Skin.ApplyTexts(uf, unit, healthOnly)
 	for _, e in ipairs(db().elements) do
 		if not healthOnly or Format.UsesHealth(e.format) then
 			local fs = AcquireText(uf, hb, e.id)
-			local text
-			if Format.IsBareName(e.format) then
-				-- Display-only pass-through: a secret name may go straight to SetText (BUG 12 pattern 1).
-				text = UnitName(unit)
-				if text == nil then text = "" end
+			if fs.vpsAdopted then
+				-- Blizzard writes this string (secure code, abbreviated by the game). We only decide
+				-- whether it shows. Its text IS a secret on Forever: GetText() returns a secret string
+				-- and ANY comparison on it (even == "") raises - that was Skin.lua:297 (142 errors,
+				-- 2026-11-23), which aborted ApplyTexts before the name/level elements. Never touch the
+				-- content. Blizzard's own TextStatusBarMixin Hide()s the string when it has nothing to
+				-- show, so IsShown() - a widget query, not a value read - is the only signal we use.
+				local hasText = fs:IsShown()
+				local visible = e.anchor ~= "hidden" and hasText
+				if fs.vpsVisible ~= visible then changed = true end
+				fs.vpsVisible = visible
+				fs:SetAlpha(visible and 1 or 0)        -- R2: alpha, never Hide/Show, on a stock region
+				fs:SetTextColor(ColorFor(uf, e, unit, level))
+				fs.vpsWidth = nil                       -- restricted region: never measured; laid out at a row edge
 			else
-				text = Format.ExpandOrEmpty(e.format, unit)
-			end
-			local visible = e.anchor ~= "hidden" and not (type(text) == "string" and text == "")
-			if fs.vpsVisible ~= visible then changed = true end
-			fs.vpsVisible = visible
-			fs:SetText(text)
-			fs:SetTextColor(ColorFor(uf, e, unit, level))
-			fs:SetShown(visible)
-			if visible and not Format.IsBareName(e.format) then
-				local w = fs:GetStringWidth() or 0
-				if fs.vpsWidth ~= w then changed = true end
-				fs.vpsWidth = w
-			else
-				changed = true     -- bare-name width may be a secret; always relayout
+				local text
+				if Format.IsBareName(e.format) then
+					-- Display-only pass-through: a secret name may go straight to SetText (BUG 12 pattern 1).
+					text = UnitName(unit)
+					if text == nil then text = "" end
+				else
+					text = Format.ExpandOrEmpty(e.format, unit)
+				end
+				local visible = e.anchor ~= "hidden" and not (type(text) == "string" and text == "")
+				if fs.vpsVisible ~= visible then changed = true end
+				fs.vpsVisible = visible
+				fs:SetText(text)
+				fs:SetTextColor(ColorFor(uf, e, unit, level))
+				fs:SetShown(visible)
+				if visible and not Format.IsBareName(e.format) then
+					local w = fs:GetStringWidth() or 0
+					if fs.vpsWidth ~= w then changed = true end
+					fs.vpsWidth = w
+				else
+					changed = true     -- bare-name width may be a secret; always relayout
+				end
 			end
 		end
 	end

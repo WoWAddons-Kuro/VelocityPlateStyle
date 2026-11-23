@@ -18,6 +18,8 @@ function impl.StockLevelRegions(uf)
 end
 
 function impl.HasSecretValues() return false end
+-- Era computes [hp] itself (UnitHealth is plain); no stock string is adopted.
+function impl.StockHealthValueText(uf) return nil end
 function impl.StockUsesClassicArt() return Client.SharedStockUsesClassicArt() end
 function impl.DifficultyColor(playerLevel, unitLevel) return Client.SharedDifficultyColor(playerLevel, unitLevel) end
 function impl.PlateOwnerAddons() return Client.SHARED_PLATE_OWNER_ADDONS end
