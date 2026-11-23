@@ -1,0 +1,7 @@
+package-as: VelocityPlateStyle
+
+ignore:
+  - README.md
+  - SPECS
+  - .gitignore
+  - .pkgmeta

@@ -1,0 +1,19 @@
+## Interface: 11509
+## Title: Velocity Plate Style
+## Notes: Restyles Blizzard's own nameplates: flat bar, crisp outline, level inside the bar, clear target border. Nothing else.
+## Author: Kuro
+## Version: @project-version@
+## SavedVariables: VelocityPlateStyleDB
+## IconTexture: Interface\AddOns\VelocityPlateStyle\Assets\VelocityPlateStyle.tga
+## X-Website: https://github.com/WoWAddons-Kuro/VelocityPlateStyle
+## X-Category: Unit Frames
+## OptionalDeps: LibSharedMedia-3.0
+
+Client\Client.lua
+Client\Client_ClassicEra.lua
+Client\Client_Forever.lua
+Client\Client_Select.lua
+Core.lua
+Textures.lua
+Skin.lua
+Options.lua
