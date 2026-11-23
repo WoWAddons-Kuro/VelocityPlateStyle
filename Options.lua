@@ -377,6 +377,33 @@ local function CreateOptions()
 	tx:Finish()
 	local txBaseH = tx.inner_h - gridHolder:GetHeight()
 
+	-- Section: Blizzard Nameplate Settings -------------------------------------------
+	-- Which plates appear, their size, style, stacking, distance and simplification are the
+	-- game's own settings. Instead of mirroring them here (two writers, drift, combat locks),
+	-- one button jumps to Blizzard's Nameplates page. Its category id is published by
+	-- Blizzard_SettingsDefinitions_Frame\Nameplates.lua as Settings.NAMEPLATE_OPTIONS_CATEGORY_ID.
+	local bz = Section("Blizzard Nameplate Settings")
+	local bzText = bz:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"); bzText:SetJustifyH("LEFT"); bzText:SetWidth(BOX_W - 2 * PAD)
+	bzText:SetText("Which nameplates appear, their size, style, stacking, distance and the \"simplify\" options are the game's own "
+		.. "settings, found under Options > Gameplay > Nameplates. This button takes you straight there.")
+	bz:Add(bzText, 28, -6)
+	local bzBtn = CreateFrame("Button", nil, bz, "UIPanelButtonTemplate")
+	bzBtn:SetSize(260, 22); bzBtn:SetText("Open Blizzard Nameplate Settings")
+	bzBtn:SetScript("OnClick", function()
+		local id = Settings and Settings.NAMEPLATE_OPTIONS_CATEGORY_ID
+		if id and Settings.OpenToCategory then
+			Settings.OpenToCategory(id)
+		elseif Settings and Settings.OpenToCategory and Settings.GetCategory then
+			-- Fallback: look the category up by its displayed name.
+			local cat = Settings.GetCategory(NAMEPLATE_OPTIONS_LABEL or "Nameplates")
+			if cat then Settings.OpenToCategory(cat:GetID()) else VPS.Print("could not find the game's Nameplates settings page") end
+		else
+			VPS.Print("could not find the game's Nameplates settings page")
+		end
+	end)
+	bz:Add(bzBtn, 22, -8)
+	bz:Finish()
+
 	-- Section: Reset ------------------------------------------------------------------
 	local rs = Section("Reset")
 	local resetBtn = CreateFrame("Button", nil, rs, "UIPanelButtonTemplate")
