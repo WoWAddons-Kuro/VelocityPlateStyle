@@ -277,6 +277,7 @@ function Skin.ApplyTexts(uf, unit, healthOnly)
 		end
 	end
 	Skin.LayoutTexts(uf)
+	Skin.ApplyOverLevel(uf, unit)        -- same input (UnitLevel); every level/name refresh path lands here
 	return changed
 end
 
