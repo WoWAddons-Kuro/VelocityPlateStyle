@@ -22,12 +22,15 @@
       `_ref\blizzard\forever\nameplates\`; write `AddonManagement\_EXTERNAL_APIS\wow_nameplate_unitframe_regions.md`
       with the confirmed region names per client (the ClientMap table below) and the list of stock functions that
       re-apply colour/size. Confirm in game with `/fstack` on Era.
-- [ ] **M1 — Era bring-up: scaffold + settings + basic visual config + level in bar.** Three TOCs, `Client\` layout,
+- [x] **M1 — Era bring-up (done 2026-11-22, commits 2458359..e243d7b).** Three TOCs, `Client\` layout,
       Core plate lifecycle, Classic Clean + Modern Square, bar texture (built-ins + opportunistic LSM, **text dropdown
       first**), bar height, backing alpha, border darkness, target border, level number with difficulty colour and stock
       classification icon re-anchored, GotJunk-style canvas options page, R7 stand-down. **No threat/aggro features.**
-- [ ] **M2 — Text controls + visual texture picker.** Name / level / health-text font, size, outline, colour mode;
-      the per-row-textured picker for textures and fonts; health text (Era: computed; Forever: restyle only).
+      In-game findings folded into "Era 1.15.9 restricted regions" and "Text elements" below.
+- [ ] **M2 — Text element layout grid.** `db.elements` model, `VPS.Format` token expander, Skin flow-layout engine
+      for the six anchor slots, stock name/health/level alpha-zeroed, Era `UNIT_HEALTH` path, options grid with
+      reorder arrows + create-custom-element box, Classic Clean retired (`barStyle`/`borderDarken` dropped).
+- [ ] **M2b — Visual texture picker** (per-row-textured list for textures; fonts if a font column is added later).
 - [ ] **M3 — Threat level (classification) modes + danger emphasis.** Text / Frame / Icon+Frame modes, danger threshold.
 - [ ] **M4 — Forever client file + verification pass** on 1.60.1 (R5 path throughout).
 - [ ] **M5 — Blizzard-settings mirror section** (CVar-bound controls, per-client CVar list).
@@ -183,17 +186,117 @@ Region names, overwrite functions and CVars: `AddonManagement\_EXTERNAL_APIS\wow
 
 Size: bar height only. Plate width/scale are client settings (mirror section, M5).
 
-### Text (M2)
+### Text elements — the layout grid (M2) **[D 2026-11-23]**
 
-| Element | Controls |
-|---|---|
-| Name | font, size, outline (none / thin / thick), colour mode (stock / white / custom) |
-| Level | font, size, outline (colour is difficulty-driven) |
-| Health text | mode (none / percent / current), font, size, outline |
+Replaces the fixed name/level/health rows. Every piece of text on the plate is a **VPS_TextElement** with the same
+five controls, laid out by one engine. The owner's picture: "for each thing: {above, below, inside, left, right,
+hidden} × {left, center, right} × size, plus a colour column, plus a box below to create custom elements".
 
-Health text: **Era** computes from `UnitHealth`/`UnitHealthMax` on `UNIT_HEALTH` for plate units (both values
-`Plain()`-ed). **Forever**: `HasSecretValues()` → mode list collapses to what the stock plate's own health text
-supports and only its font is restyled; the dropdown tooltip says why.
+```lua
+-- VPS_TextElement (one row of VelocityPlateStyleDB.elements, in display order)
+{
+  id      = "name",            -- VPS_ElementID: built-ins "name" | "level" | "health" | "healthpct"; custom = "c<n>"
+  label   = "Name",            -- shown in the grid; editable for custom elements
+  format  = "[name]",          -- VPS_FormatString; built-ins are fixed, custom is player-entered
+  anchor  = "above",           -- VPS_Anchor: above | below | inside | left | right | hidden
+  align   = "center",          -- VPS_Align:  left | center | right      (left/right anchors: top | middle | bottom)
+  size    = 10,                -- font size px, 6..20 (SetFont, never SetTextHeight — stretched text is blurry)
+  color   = "stock",           -- VPS_ColorMode: stock | white | difficulty | class | custom ; customColor = {r,g,b}
+}
+```
+
+**Defaults** (order matters — see stacking):
+
+| # | id | format | anchor | align | size | color |
+|---|---|---|---|---|---|---|
+| 1 | `name` | `[name]` | above | center | 10 | stock |
+| 2 | `level` | `[level]` | inside | right | 9 | difficulty |
+| 3 | `health` | `[hp]` | hidden | right | 9 | white |
+| 4 | `healthpct` | `[hp%]` | hidden | right | 9 | white |
+
+**Layout engine (Skin.lua).** Six anchor **slots** on the health bar: `above`, `below`, `inside` are horizontal rows
+spanning the bar; `left`, `right` are vertical columns beside it (outside the outline + 4px). Within a slot, elements
+are grouped by `align`; a group is laid as a **flow**: the first element in list order takes the edge, the next is
+anchored to its free side with a 4px gap (`inside`+`right`: `68%` then `709K` to its left — exactly screenshot 2).
+`center` groups are centred as a chain (first element centred, others hang off it alternately right/left — rare in
+practice; documented so it is deterministic). `left`/`right` slots lay elements vertically by `align` = top/middle/
+bottom with the same flow rule. Row height = max font size in that row; `above`/`below` sit 2px off the bar.
+
+All FontStrings are **ours** (`uf.vpsText[id]`), parented to the health bar. The **stock** `uf.name` and the stock
+health texts (`healthBar.Text/LeftText/RightText`) and stock level regions are **alpha-zeroed** (R2) while the
+addon is active. Rationale: on Era 1.15.9 the stock name is a *restricted region* (BUG, debugged 2026-11-22):
+`GetPoint/GetWidth/GetEffectiveScale` raise `Can't measure restricted regions`, so it cannot participate in a flow
+layout that needs widths. Our own strings can be measured freely.
+
+**Format tokens** (`VPS.Format.Expand(format, unit) -> string`), every unit read through `Plain()`:
+
+| token | value | Era | Forever |
+|---|---|---|---|
+| `[name]` | `UnitName` | ✓ | secret for hostiles in combat/instances → **element shows the stock name string via `SetText(secret)`** only when the format is exactly `[name]`; in any other format the token expands to `""` |
+| `[level]` | `UnitLevel`, `-1` → `??` | ✓ | ✓ (verify) |
+| `[hp]` | `UnitHealth` abbreviated (`709K`) | ✓ | secret → `""` |
+| `[hp%]` | `floor(hp/hpmax*100).."%"` | ✓ | secret → `""` |
+| `[hpmax]` | `UnitHealthMax` abbreviated | ✓ | secret → `""` |
+| `[class]` | `rare` / `elite` / `rare elite` / `boss` / `""` | ✓ | ✓ |
+| `[class+]` | `r` / `+` / `r+` / `??` / `""` (compact suffix) | ✓ | ✓ |
+| `[creature]` | `UnitCreatureType` | ✓ | ✓ (verify) |
+| `\|cAARRGGBB` … `\|r` | colour codes typed by the player pass through unchanged | ✓ | ✓ |
+
+An element whose expanded string is `""` is hidden for that pass and takes no room in the flow. On Forever this
+means a custom `[hp] / [hpmax]` element is blank in restricted content — accepted **[D]**; the tooltip on the
+format box says so.
+
+**Health updates (Era only).** `UNIT_HEALTH` for `nameplateN` units re-expands only the elements whose format
+contains an `[hp…]` token (`VPS.Format.UsesHealth(format)` cached per element). On Forever `HasSecretValues()`
+skips the registration entirely (R5). No `UNIT_HEALTH_FREQUENT`, no timers (R4).
+
+**Colour modes.** `stock` = copy the stock region's current vertex colour at each update (name: reaction/tap colour
+from the alpha-zeroed `uf.name`; health: white). `difficulty` = `Client.DifficultyColor(playerLevel, unitLevel)` —
+**the only mode offered for `level`** (R3). `class` = `RAID_CLASS_COLORS` for players, else white. `custom` = the
+swatch.
+
+**R3 under this model.** `level` cannot be `hidden`: its anchor dropdown omits that entry. Every other element may.
+
+### Options page: the element grid (M2)
+
+One **dense table** in the Text section, one row per element in `db.elements` order:
+
+```
+ ▲▼  Name          [above  ▾]  [center ▾]  [10 ▾]  [stock      ▾] ■
+ ▲▼  Level         [inside ▾]  [right  ▾]  [ 9 ▾]  [difficulty  ]
+ ▲▼  Health        [hidden ▾]  [right  ▾]  [ 9 ▾]  [white      ▾] ■
+ ▲▼  Health %      [hidden ▾]  [right  ▾]  [ 9 ▾]  [white      ▾] ■
+ ▲▼  My elite tag  [inside ▾]  [left   ▾]  [ 8 ▾]  [custom     ▾] ■   [×]
+
+ Create custom element
+   Name   [________________]
+   Format [________________________________]   tokens: [name] [level] [hp] [hp%] [hpmax] [class] [class+] [creature]
+   [ Add ]
+```
+
+- Columns: reorder arrows (▲▼ move the row one step; order = stacking order within a slot), label, anchor dropdown,
+  align dropdown, size dropdown (6..20), colour dropdown + swatch button (enabled only for `custom`), delete `×`
+  (custom rows only). Cells are `UIDropDownMenuTemplate` buttons sized to the column; no sliders in the grid.
+- Custom rows have an editable label (click to edit) and show their format string in the tooltip.
+- **Create custom element**: label + format `InputBoxTemplate`, Add appends `{ id = "c"..nextId, anchor = "inside",
+  align = "left", size = 9, color = "white" }` and re-renders the grid. Empty label or format → chat hint, nothing added.
+- Every change bumps the style version (`VPS.RestyleAll()`).
+
+### Bar styles — Classic Clean retired for now **[D 2026-11-23]**
+
+Only the flat style ships. `barStyle` and `borderDarken` are removed from the DB (migration: drop the keys). The
+stock backing+border atlas and the non-target darkening are alpha-zeroed unconditionally; our backing, 1px outline
+and target border always draw. "Themes" (squared / rounded / stock art) return later as a single `theme` key once the
+layout work is settled. The level number is no longer a Style-section toggle: it is the `level` row of the grid.
+
+### Era 1.15.9 restricted regions — hard rule **[D]**
+
+The stock `uf.name` FontString (and possibly other stock plate regions) is **restricted for addon code** on Era:
+measurement calls (`GetPoint`, `GetWidth`, `GetStringWidth`, `GetEffectiveScale`, `GetRect`) raise
+`Can't measure restricted regions`, and anything that measures internally (`PixelUtil.SetPoint`, `PixelUtil.SetSize`)
+silently fails. Writes (`SetPoint`, `SetAlpha`, `SetFont`, `SetJustifyH`, `SetVertexColor`) are allowed.
+**Consequence:** never measure a stock plate region; never pass one to `PixelUtil`; only ever measure our own
+`uf.vps*` regions. Record in `_EXTERNAL_APIS\wow_nameplate_unitframe_regions.md`.
 
 ### Threat level: classification modes + danger emphasis (M3)
 
@@ -229,10 +332,10 @@ from the draft is moot. Opened by `/vps` (no args) and `/velocityplatestyle`.
 
 Sections, in order:
 
-1. **Style** — bar style, bar texture, bar height, border darkness (Classic Clean), backing alpha (Modern Square)
+1. **Style** — bar texture, bar height, backing darkness
 2. **Target** — border colour (`ColorPickerFrame`), thickness
-3. **Threat level** (M3) — classification mode, danger threshold
-4. **Text** (M2) — name / level / health text
+3. **Text** (M2) — the element grid + "Create custom element" box (see "Options page: the element grid")
+4. **Threat level** (M3) — classification mode, danger threshold
 5. **Aggro** (M6) — mode, states
 6. **Blizzard nameplate settings** (M5) — CVar mirror, header line stating these are Blizzard's own settings;
    controls shown only when `C_CVar.GetCVarInfo(name)` is non-nil; disabled between `PLAYER_REGEN_DISABLED/ENABLED`;
@@ -254,13 +357,18 @@ the font dropdowns (each row in its own font).
 ```lua
 -- ## SavedVariables: VelocityPlateStyleDB   (account-wide; no profiles, no per-character data — nothing is keyed by character)
 VelocityPlateStyleDB = {
-  Version = 1,
-  barStyle = "modern", barTexture = "VPS:Flat", barHeight = 12, borderDarken = 0.6, backingAlpha = 0.6,
+  Version = 2,                                      -- 1 -> 2: drop barStyle, borderDarken, showLevel; add elements
+  barTexture = "VPS:Flat", barHeight = 12, backingAlpha = 0.6,
   targetColor = { 1, 1, 1, 1 }, targetThickness = 2,
-  -- M2
-  name  = { font = "VPS:Friz", size = 10, outline = "thin", colorMode = "stock", color = { 1, 1, 1 } },
-  level = { font = "VPS:Friz", size = 9,  outline = "thin" },
-  health = { mode = "none", font = "VPS:Friz", size = 9, outline = "thin" },
+  -- M2: ordered list of VPS_TextElement (see "Text elements"); order = stacking order within an anchor slot
+  elements = {
+    { id = "name",      label = "Name",     format = "[name]",  anchor = "above",  align = "center", size = 10, color = "stock" },
+    { id = "level",     label = "Level",    format = "[level]", anchor = "inside", align = "right",  size = 9,  color = "difficulty" },
+    { id = "health",    label = "Health",   format = "[hp]",    anchor = "hidden", align = "right",  size = 9,  color = "white" },
+    { id = "healthpct", label = "Health %", format = "[hp%]",   anchor = "hidden", align = "right",  size = 9,  color = "white" },
+    -- custom rows: { id = "c3", label = "...", format = "...", anchor, align, size, color = "custom", customColor = {r,g,b} }
+  },
+  nextCustomId = 1,
   -- M3
   classificationMode = "icon", dangerThreshold = 3,
   -- M6
