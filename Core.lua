@@ -8,21 +8,35 @@
 local ADDON, VPS = ...
 local Client = VPS.Client
 
-local VPS_DB_VERSION = 1
+local VPS_DB_VERSION = 2   -- 1 -> 2: barStyle/borderDarken/showLevel dropped; elements list added (spec "Text elements")
+
+-- Default VPS_TextElement rows, in stacking order. Copied (deep) into a fresh DB.
+VPS.DEFAULT_ELEMENTS = {
+	{ id = "name",      label = "Name",     format = "[name]",  anchor = "above",  align = "center", size = 10, color = "stock" },
+	{ id = "level",     label = "Level",    format = "[level]", anchor = "inside", align = "right",  size = 9,  color = "difficulty" },
+	{ id = "health",    label = "Health",   format = "[hp]",    anchor = "hidden", align = "right",  size = 9,  color = "white" },
+	{ id = "healthpct", label = "Health %", format = "[hp%]",   anchor = "hidden", align = "right",  size = 9,  color = "white" },
+}
+VPS.BUILTIN_ELEMENT_IDS = { name = true, level = true, health = true, healthpct = true }
 
 -- Account-wide defaults. Keys are documented in the spec's "Saved variables" section.
 VPS.DEFAULTS = {
 	Version = VPS_DB_VERSION,
-	barStyle = "modern",          -- "classic" (Classic Clean) | "modern" (Modern Square)
 	barTexture = "VPS:Flat",      -- key into VPS.Textures (Textures.lua)
 	barHeight = 12,               -- px, 6..24
-	borderDarken = 0.6,           -- Classic Clean: 0 = stock border colour, 1 = black
-	backingAlpha = 0.6,           -- Modern Square: alpha of the black backing behind the fill
+	backingAlpha = 0.6,           -- alpha of the black backing behind the fill
 	targetColor = { 1, 1, 1, 1 },
 	targetThickness = 2,          -- px, 1..4
-	showLevel = true,             -- Modern Square: level number inside the bar (R3: colour/placement only; the
-	                              -- stock representation stays when this is off)
+	nextCustomId = 1,             -- counter for custom element ids "c<n>"
+	-- elements: filled by InitDB from DEFAULT_ELEMENTS (arrays are not merged by CopyDefaults)
 }
+
+-- VPS_Anchor / VPS_Align / VPS_ColorMode vocabularies (Options dropdowns + Skin).
+VPS.ANCHORS = { "above", "below", "inside", "left", "right", "hidden" }
+VPS.ALIGNS_H = { "left", "center", "right" }         -- for above / below / inside
+VPS.ALIGNS_V = { "top", "middle", "bottom" }         -- for left / right side columns (baseline alignment)
+VPS.COLOR_MODES = { "stock", "white", "difficulty", "class", "custom" }
+VPS.SIZE_MIN, VPS.SIZE_MAX = 6, 20
 
 VPS.styleVersion = 1          -- bumped on every settings change; uf.vpsStyled ~= styleVersion => restyle
 VPS.standDown = nil           -- name of the plate-replacement addon that made us stand down, or nil
@@ -54,16 +68,82 @@ end
 
 local function InitDB()
 	if type(VelocityPlateStyleDB) ~= "table" then VelocityPlateStyleDB = {} end
-	CopyDefaults(VelocityPlateStyleDB, VPS.DEFAULTS)
-	VelocityPlateStyleDB.Version = VPS_DB_VERSION
-	VPS.db = VelocityPlateStyleDB
+	local d = VelocityPlateStyleDB
+	-- v1 -> v2: the two-style split and the level toggle are gone (spec: Classic Clean retired).
+	if (d.Version or 1) < 2 then
+		d.barStyle, d.borderDarken, d.showLevel = nil, nil, nil
+	end
+	CopyDefaults(d, VPS.DEFAULTS)
+	if type(d.elements) ~= "table" or #d.elements == 0 then
+		d.elements = {}
+		for _, e in ipairs(VPS.DEFAULT_ELEMENTS) do d.elements[#d.elements + 1] = CopyTable(e) end
+	end
+	-- Every built-in must exist exactly once (a missing one is appended, a duplicate dropped);
+	-- every row gets any field a newer default introduced.
+	local seen = {}
+	for i = #d.elements, 1, -1 do
+		local e = d.elements[i]
+		if type(e) ~= "table" or type(e.id) ~= "string" or seen[e.id] then table.remove(d.elements, i) else seen[e.id] = true end
+	end
+	for _, def in ipairs(VPS.DEFAULT_ELEMENTS) do
+		if not seen[def.id] then d.elements[#d.elements + 1] = CopyTable(def) end
+	end
+	for _, e in ipairs(d.elements) do
+		local def = VPS.DefaultElement(e.id) or VPS.DEFAULT_ELEMENTS[1]
+		for k, v in pairs(def) do if e[k] == nil and k ~= "id" and k ~= "label" and k ~= "format" then e[k] = v end end
+		if e.id == "level" then e.color = "difficulty"; if e.anchor == "hidden" then e.anchor = "inside" end end   -- R3
+	end
+	d.Version = VPS_DB_VERSION
+	VPS.db = d
 end
 
 function VPS.ResetToDefaults()
 	wipe(VelocityPlateStyleDB)
-	CopyDefaults(VelocityPlateStyleDB, VPS.DEFAULTS)
-	VPS.db = VelocityPlateStyleDB
+	InitDB()
 	VPS.RestyleAll()
+end
+
+--------------------------------------------------------------------------------
+-- Text element helpers (VPS_TextElement rows in db.elements)
+--------------------------------------------------------------------------------
+function VPS.DefaultElement(id)
+	for _, e in ipairs(VPS.DEFAULT_ELEMENTS) do if e.id == id then return e end end
+	return nil
+end
+
+function VPS.IsBuiltinElement(id) return VPS.BUILTIN_ELEMENT_IDS[id] == true end
+
+function VPS.ElementIndex(id)
+	for i, e in ipairs(VPS.db.elements) do if e.id == id then return i end end
+	return nil
+end
+
+-- Moves the element at `index` by `delta` (-1 up / +1 down). Order = stacking order.
+function VPS.MoveElement(index, delta)
+	local list = VPS.db.elements
+	local j = index + delta
+	if not list[index] or j < 1 or j > #list then return false end
+	list[index], list[j] = list[j], list[index]
+	VPS.RestyleAll()
+	return true
+end
+
+function VPS.AddCustomElement(label, format)
+	local d = VPS.db
+	local id = "c" .. tostring(d.nextCustomId)
+	d.nextCustomId = d.nextCustomId + 1
+	d.elements[#d.elements + 1] = { id = id, label = label, format = format, anchor = "inside", align = "left", size = 9, color = "white" }
+	VPS.RestyleAll()
+	return id
+end
+
+function VPS.RemoveElement(id)
+	if VPS.IsBuiltinElement(id) then return false end
+	local i = VPS.ElementIndex(id)
+	if not i then return false end
+	table.remove(VPS.db.elements, i)
+	VPS.RestyleAll()
+	return true
 end
 
 --------------------------------------------------------------------------------
@@ -165,13 +245,15 @@ local function InstallGlobalHooks()
 	if type(CompactUnitFrame_UpdateLevel) == "function" then
 		hooksecurefunc("CompactUnitFrame_UpdateLevel", function(frame)
 			if VPS.standDown or not frame.vpsStyled or frame:IsForbidden() then return end
-			if frame.unit then VPS.Skin.ApplyLevel(frame, frame.unit) end
+			if frame.unit then VPS.Skin.ApplyTexts(frame, frame.unit) end
 		end)
 	end
 	if type(CompactUnitFrame_UpdateName) == "function" then
 		hooksecurefunc("CompactUnitFrame_UpdateName", function(frame)
 			if VPS.standDown or not frame.vpsStyled or frame:IsForbidden() then return end
-			VPS.Skin.ReapplyName(frame)
+			-- Stock re-shows/re-colours uf.name; re-zero it and refresh the name element colour.
+			VPS.Skin.ReapplyStockTexts(frame)
+			if frame.unit then VPS.Skin.ApplyTexts(frame, frame.unit) end
 		end)
 	end
 end
@@ -197,10 +279,12 @@ local function OnTargetChanged()
 	ForEachUnitFrame(function(uf, unit) if unit then VPS.Skin.ApplyTarget(uf, unit) end end)
 end
 
-local function OnUnitLevel(unit)
+-- Any unit event that can change a text element's value: level, name, health. healthOnly
+-- restricts the refresh to elements whose format reads health (UNIT_HEALTH is frequent).
+local function OnUnitText(unit, healthOnly)
 	if type(unit) ~= "string" or not unit:find("^nameplate%d") then return end
 	local uf = UnitFrameForUnit(unit)
-	if uf and uf.vpsStyled then VPS.Skin.ApplyLevel(uf, unit) end
+	if uf and uf.vpsStyled then VPS.Skin.ApplyTexts(uf, unit, healthOnly) end
 end
 
 ev:SetScript("OnEvent", function(self, event, arg1)
@@ -220,6 +304,10 @@ ev:SetScript("OnEvent", function(self, event, arg1)
 		self:RegisterEvent("PLAYER_TARGET_CHANGED")
 		self:RegisterEvent("UNIT_LEVEL")
 		self:RegisterEvent("PLAYER_LEVEL_UP")
+		self:RegisterEvent("UNIT_NAME_UPDATE")
+		-- Health text is computed in Lua only where UnitHealth is never secret (R5). On Forever the
+		-- [hp] tokens expand to "" and there is nothing to refresh.
+		if not Client.HasSecretValues() then self:RegisterEvent("UNIT_HEALTH") end
 		VPS.RestyleAll()
 	elseif event == "NAME_PLATE_UNIT_ADDED" then
 		OnPlateAdded(arg1)
@@ -227,10 +315,12 @@ ev:SetScript("OnEvent", function(self, event, arg1)
 		OnPlateRemoved(arg1)
 	elseif event == "PLAYER_TARGET_CHANGED" then
 		OnTargetChanged()
-	elseif event == "UNIT_LEVEL" then
-		OnUnitLevel(arg1)
+	elseif event == "UNIT_LEVEL" or event == "UNIT_NAME_UPDATE" then
+		OnUnitText(arg1, false)
+	elseif event == "UNIT_HEALTH" then
+		OnUnitText(arg1, true)
 	elseif event == "PLAYER_LEVEL_UP" then
-		ForEachUnitFrame(function(uf, unit) if unit then VPS.Skin.ApplyLevel(uf, unit) end end)
+		ForEachUnitFrame(function(uf, unit) if unit then VPS.Skin.ApplyTexts(uf, unit) end end)
 	end
 end)
 

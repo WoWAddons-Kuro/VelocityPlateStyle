@@ -1,28 +1,33 @@
--- Velocity Plate Style: the drawing. Two bar styles (Classic Clean / Modern Square), the
--- target border and the in-bar level number. Every stock region we replace is alpha-zeroed,
--- never hidden or reparented (R2). Our own regions are created once per pooled unit frame
--- (uf.vps*) and re-skinned on every pass, so a recycled frame always reflects the current
--- settings. Region names: _EXTERNAL_APIS\wow_nameplate_unitframe_regions.md.
+-- Velocity Plate Style: the drawing. Flat bar (backing + 1px outline), target border, and the
+-- text element layout engine (spec "Text elements - the layout grid").
+--
+-- Every stock region we replace is alpha-zeroed, never hidden or reparented (R2). Our own
+-- regions are created once per pooled unit frame (uf.vps*) and re-skinned on every pass, so a
+-- recycled frame always reflects the current settings.
+--
+-- Era 1.15.9 hard rule: stock plate regions (uf.name at least) are RESTRICTED - measuring them
+-- (GetPoint/GetWidth/GetStringWidth/GetEffectiveScale) raises, and PixelUtil silently fails on
+-- them. Writes are fine. We therefore never measure a stock region and never pass one to
+-- PixelUtil; every text string on the plate is our own FontString.
 local ADDON, VPS = ...
 local Client = VPS.Client
 local Plain = VPS.Plain
+local Format = VPS.Format
 
 local Skin = {}
 VPS.Skin = Skin
 
 local WHITE8 = "Interface\\Buttons\\WHITE8x8"
-local LEVEL_FONT = "SystemFont_NamePlate_Outlined"
-local SKULL_TEXT = "??"
+local TEXT_FONT = "SystemFont_NamePlate_Outlined"
 local SKULL_COLOR = { 1, 0.1, 0.1 }
+local GAP = 4            -- px between elements flowing in one group, and between a side column and the bar
+local ROW_OFF = 2        -- px between the bar outline and an above/below row
 
 local function db() return VPS.db end
-local function IsModern() return db().barStyle == "modern" end
 
 --------------------------------------------------------------------------------
 -- Our own regions (created on first use, parented to the health bar)
 --------------------------------------------------------------------------------
--- Four 1px textures around a rect; parent is the bar so they move/scale with it.
--- Snap every edge to the pixel grid so 1px lines stay 1 crisp pixel at any UI scale.
 local function PixelSnap(t)
 	if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(true) end
 	if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
@@ -42,10 +47,9 @@ local function AcquireEdges(parent, key, layer, sublevel)
 	return edges
 end
 
--- Lays the four edges `thickness` px wide, `inset` px OUTSIDE the rect `rel` (inset >= 0).
+-- Lays the four edges `thickness` px wide, `inset` px OUTSIDE the rect `rel` (our own regions only).
 local function LayoutEdges(edges, rel, thickness, inset)
-	local o = inset
-	local t = thickness
+	local o, t = inset, thickness
 	PixelUtil.SetPoint(edges.Top, "BOTTOMLEFT", rel, "TOPLEFT", -o - t, o)
 	PixelUtil.SetPoint(edges.Top, "BOTTOMRIGHT", rel, "TOPRIGHT", o + t, o)
 	PixelUtil.SetHeight(edges.Top, t)
@@ -71,38 +75,47 @@ local function AcquireOwnRegions(uf)
 	local hb = Client.HealthBar(uf)
 	if not hb then return nil end
 	if not uf.vpsBacking then
-		-- Backing: below the fill. The fill (barTexture) is on ARTWORK sublevel 0 of the StatusBar.
 		local backing = hb:CreateTexture(nil, "BACKGROUND", nil, -7)
 		backing:SetTexture(WHITE8)
 		backing:SetVertexColor(0, 0, 0, 1)
 		backing:SetAllPoints(hb)
 		uf.vpsBacking = backing
-		-- 1px outline hugging the bar; drawn above the backing, below foreign icons (which are on
-		-- frames of their own with a higher level).
 		uf.vpsOutline = AcquireEdges(hb, "vpsOutlineEdges", "BACKGROUND", -6)
-		-- Target border: outside the outline.
 		uf.vpsTarget = AcquireEdges(hb, "vpsTargetEdges", "BACKGROUND", -5)
-		-- Level number inside the bar, right edge.
-		local lvl = hb:CreateFontString(nil, "OVERLAY", LEVEL_FONT)
-		lvl:SetJustifyH("RIGHT")
-		lvl:SetWordWrap(false)
-		uf.vpsLevel = lvl
+		uf.vpsText = {}          -- VPS_ElementID -> FontString
 	end
 	return hb
+end
+
+-- One FontString per element id, created on demand and parented to the bar.
+local function AcquireText(uf, hb, id)
+	local fs = uf.vpsText[id]
+	if fs then return fs end
+	fs = hb:CreateFontString(nil, "OVERLAY", TEXT_FONT)
+	fs:SetWordWrap(false)
+	uf.vpsText[id] = fs
+	return fs
+end
+
+-- SetFont (re-rasterise at size), never SetTextHeight (stretches, blurry).
+local function ApplyFont(fs, size)
+	local path, _, flags = fs:GetFont()
+	if not path then
+		local fo = _G[TEXT_FONT]
+		if fo then path, _, flags = fo:GetFont() end
+	end
+	if path then fs:SetFont(path, size, flags or "OUTLINE") end
 end
 
 --------------------------------------------------------------------------------
 -- Static styling (per settings version)
 --------------------------------------------------------------------------------
 local function ApplyFillTexture(uf)
-	local hb = Client.HealthBar(uf)
-	if not hb then return end
 	local key = db().barTexture
-	if VPS.Textures.IsStockKey(key) then return end       -- leave Blizzard's fill alone
+	if VPS.Textures.IsStockKey(key) then return end
 	local path = VPS.Textures.PathForKey(key)
 	local fill = Client.HealthBarFill(uf)
 	if fill and path then
-		-- Set the texture on the existing barTexture region: colour (reaction) stays stock.
 		fill:SetTexture(path)
 		fill:SetTexCoord(0, 1, 0, 1)
 		fill:SetHorizTile(false)
@@ -115,33 +128,20 @@ local function ApplyBarHeight(uf)
 	if container then PixelUtil.SetHeight(container, db().barHeight) end
 end
 
--- Modern Square: hide (alpha) the stock backing+border atlas and the non-target darkening,
--- show our backing + outline. Classic Clean: restore stock alphas, darken the stock backing.
+-- Stock backing+border atlas and non-target darkening off; our backing + outline on.
 local function ApplyBorderStyle(uf)
-	local d = db()
 	local backingStock = Client.HealthBarBacking(uf)
 	local deselected = Client.DeselectedOverlay(uf)
 	local hb = Client.HealthBar(uf)
-	if IsModern() then
-		if backingStock then backingStock:SetAlpha(0) end
-		if deselected then deselected:SetAlpha(0) end
-		uf.vpsBacking:SetVertexColor(0, 0, 0, d.backingAlpha)
-		uf.vpsBacking:Show()
-		LayoutEdges(uf.vpsOutline, hb, 1, 0)
-		SetEdges(uf.vpsOutline, 0, 0, 0, 1, true)
-	else
-		if backingStock then
-			backingStock:SetAlpha(1)
-			local k = 1 - d.borderDarken
-			backingStock:SetVertexColor(k, k, k, 1)
-		end
-		if deselected then deselected:SetAlpha(1) end
-		uf.vpsBacking:Hide()
-		SetEdges(uf.vpsOutline, 0, 0, 0, 0, false)
-	end
+	if backingStock then backingStock:SetAlpha(0) end
+	if deselected then deselected:SetAlpha(0) end
+	uf.vpsBacking:SetVertexColor(0, 0, 0, db().backingAlpha)
+	uf.vpsBacking:Show()
+	LayoutEdges(uf.vpsOutline, hb, 1, 0)
+	SetEdges(uf.vpsOutline, 0, 0, 0, 1, true)
 end
 
--- Stock target cues are alpha-zeroed while our border is on (both styles).
+-- Stock target cues off while our border is on.
 local function ApplyStockTargetCueAlpha(uf)
 	local selected = Client.SelectedBorder(uf)
 	local highlight = Client.SelectionHighlight(uf)
@@ -149,51 +149,12 @@ local function ApplyStockTargetCueAlpha(uf)
 	if highlight then highlight:SetAlpha(0) end
 end
 
--- Level placement. Modern Square: our FontString inside the bar; Forever's stock level box
--- (PlayerLevelDiffFrame) alpha-zeroed. Classic Clean: ours hidden, stock regions restored.
---
--- Font size is set with SetFont (re-rasterises the glyphs at that size), NOT SetTextHeight,
--- which stretches the already-rendered string and is what makes stock plate text blurry.
-local function ApplyLevelFont(lvl)
-	local size = math.max(8, math.floor(db().barHeight * 0.75 + 0.5))
-	local path, _, flags = lvl:GetFont()
-	if not path then
-		local fo = _G[LEVEL_FONT]
-		if fo then path, _, flags = fo:GetFont() end
-	end
-	if path then lvl:SetFont(path, size, flags or "OUTLINE") end
-end
-
-local function ApplyLevelPlacement(uf)
-	local hb = Client.HealthBar(uf)
-	local lvl = uf.vpsLevel
-	local useOurs = IsModern() and db().showLevel
-	for _, region in ipairs(Client.StockLevelRegions(uf) or {}) do
-		region:SetAlpha(useOurs and 0 or 1)
-	end
-	if useOurs then
-		lvl:ClearAllPoints()
-		PixelUtil.SetPoint(lvl, "RIGHT", hb, "RIGHT", -3, 0)
-		ApplyLevelFont(lvl)
-		lvl:Show()
-	else
-		lvl:Hide()
-	end
-end
-
--- Keep the stock name clear of our level number (Modern style anchors the name to the
--- health text; when health text is empty the name runs to the bar's right edge).
-local function ApplyNameClearance(uf)
+-- Every stock text we replace with our own elements: name, health strings, level regions.
+function Skin.ReapplyStockTexts(uf)
 	local name = Client.NameText(uf)
-	local lvl = uf.vpsLevel
-	if not (name and lvl) then return end
-	if IsModern() and db().showLevel and lvl:IsShown() then
-		-- Only the RIGHT point is ours to move; stock re-sets it in UpdateAnchors, which we hook.
-		local w = lvl:GetStringWidth() or 0
-		name.vpsRightPad = w + 6
-	else
-		name.vpsRightPad = nil
-	end
+	if name then name:SetAlpha(0) end
+	for _, fs in ipairs(Client.HealthTexts(uf) or {}) do fs:SetAlpha(0) end
+	for _, region in ipairs(Client.StockLevelRegions(uf) or {}) do region:SetAlpha(0) end
 end
 
 function Skin.ApplyStatic(uf)
@@ -203,9 +164,185 @@ function Skin.ApplyStatic(uf)
 	ApplyBarHeight(uf)
 	ApplyBorderStyle(uf)
 	ApplyStockTargetCueAlpha(uf)
-	ApplyLevelPlacement(uf)
-	LayoutEdges(uf.vpsTarget, hb, db().targetThickness, IsModern() and 1 or 2)
-	Skin.ReapplyName(uf)
+	Skin.ReapplyStockTexts(uf)
+	LayoutEdges(uf.vpsTarget, hb, db().targetThickness, 1)
+	-- Fonts for every element; hide strings for elements that no longer exist.
+	local live = {}
+	for _, e in ipairs(db().elements) do
+		live[e.id] = true
+		ApplyFont(AcquireText(uf, hb, e.id), e.size or 9)
+	end
+	for id, fs in pairs(uf.vpsText) do if not live[id] then fs:Hide(); fs:SetText("") end end
+end
+
+--------------------------------------------------------------------------------
+-- Text elements: value + colour
+--------------------------------------------------------------------------------
+local function ColorFor(uf, e, unit, level)
+	local mode = e.color
+	if e.id == "level" then mode = "difficulty" end                         -- R3
+	if mode == "custom" and type(e.customColor) == "table" then
+		local c = e.customColor; return c[1] or 1, c[2] or 1, c[3] or 1
+	elseif mode == "difficulty" then
+		if level == nil then return 1, 1, 1 end
+		if level < 0 then return SKULL_COLOR[1], SKULL_COLOR[2], SKULL_COLOR[3] end
+		if Plain(UnitCanAttack("player", unit)) == false then return 0.8, 0.8, 0.8 end
+		return Client.DifficultyColor(UnitLevel("player") or 1, level)
+	elseif mode == "class" then
+		local _, class = UnitClass(unit)
+		class = Plain(class)
+		local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+		if c then return c.r, c.g, c.b end
+		return 1, 1, 1
+	elseif mode == "stock" then
+		-- Copy the stock name's reaction/tap colour (reading vertex colour is not a measurement).
+		local name = Client.NameText(uf)
+		if name then
+			local ok, r, g, b = pcall(name.GetTextColor, name)
+			if ok and r then return r, g, b end
+		end
+		return 1, 1, 1
+	end
+	return 1, 1, 1
+end
+
+-- Fills every element's text + colour for `unit`. healthOnly: only formats that read health.
+-- Returns true when any element's shown-state or text changed (caller relays out).
+function Skin.ApplyTexts(uf, unit, healthOnly)
+	if not uf.vpsText then return end
+	local hb = Client.HealthBar(uf)
+	if not hb then return end
+	local level = Plain(UnitLevel(unit))
+	local changed = false
+	for _, e in ipairs(db().elements) do
+		if not healthOnly or Format.UsesHealth(e.format) then
+			local fs = AcquireText(uf, hb, e.id)
+			local text
+			if Format.IsBareName(e.format) then
+				-- Display-only pass-through: a secret name may go straight to SetText (BUG 12 pattern 1).
+				text = UnitName(unit)
+				if text == nil then text = "" end
+			else
+				text = Format.ExpandOrEmpty(e.format, unit)
+			end
+			local visible = e.anchor ~= "hidden" and not (type(text) == "string" and text == "")
+			if fs.vpsVisible ~= visible then changed = true end
+			fs.vpsVisible = visible
+			fs:SetText(text)
+			fs:SetTextColor(ColorFor(uf, e, unit, level))
+			fs:SetShown(visible)
+			if visible and not Format.IsBareName(e.format) then
+				local w = fs:GetStringWidth() or 0
+				if fs.vpsWidth ~= w then changed = true end
+				fs.vpsWidth = w
+			else
+				changed = true     -- bare-name width may be a secret; always relayout
+			end
+		end
+	end
+	Skin.LayoutTexts(uf)
+	return changed
+end
+
+--------------------------------------------------------------------------------
+-- Text elements: the flow layout
+--------------------------------------------------------------------------------
+-- Six slots on the bar. above/below/inside are horizontal rows: elements grouped by align
+-- (left/center/right) flow from that edge in list order with GAP between them. left/right
+-- are vertical columns beside the bar: align top/middle/bottom is which baseline lines up with
+-- the bar; elements in one group flow outward (away from the bar) in list order.
+
+-- Horizontal row anchoring. `rowPoint` is the bar point the row hangs off ("TOP" for above,
+-- "BOTTOM" for below, "" for inside) and `yOff` its offset.
+local function LayoutRow(fsList, hb, slot)
+	local yOff, barPointV, fsPointV
+	if slot == "above" then yOff, barPointV, fsPointV = ROW_OFF, "TOP", "BOTTOM"
+	elseif slot == "below" then yOff, barPointV, fsPointV = -ROW_OFF, "BOTTOM", "TOP"
+	else yOff, barPointV, fsPointV = 0, "", "" end
+	local groups = { left = {}, center = {}, right = {} }
+	for _, item in ipairs(fsList) do
+		local g = groups[item.align] or groups.left
+		g[#g + 1] = item.fs
+	end
+	-- left group: first at bar left, next to its right
+	local prev
+	for _, fs in ipairs(groups.left) do
+		fs:ClearAllPoints()
+		fs:SetJustifyH("LEFT")
+		if prev then PixelUtil.SetPoint(fs, fsPointV .. "LEFT", prev, fsPointV .. "RIGHT", GAP, 0)
+		else PixelUtil.SetPoint(fs, fsPointV .. "LEFT", hb, barPointV .. "LEFT", slot == "inside" and 3 or 0, yOff) end
+		prev = fs
+	end
+	-- right group: first at bar right, next to its left
+	prev = nil
+	for _, fs in ipairs(groups.right) do
+		fs:ClearAllPoints()
+		fs:SetJustifyH("RIGHT")
+		if prev then PixelUtil.SetPoint(fs, fsPointV .. "RIGHT", prev, fsPointV .. "LEFT", -GAP, 0)
+		else PixelUtil.SetPoint(fs, fsPointV .. "RIGHT", hb, barPointV .. "RIGHT", slot == "inside" and -3 or 0, yOff) end
+		prev = fs
+	end
+	-- center group: first centred; the rest alternate right/left of the chain
+	local first = groups.center[1]
+	if first then
+		first:ClearAllPoints()
+		first:SetJustifyH("CENTER")
+		PixelUtil.SetPoint(first, fsPointV == "" and "CENTER" or fsPointV, hb, barPointV == "" and "CENTER" or barPointV, 0, yOff)
+		local rightMost, leftMost = first, first
+		for i = 2, #groups.center do
+			local fs = groups.center[i]
+			fs:ClearAllPoints()
+			if i % 2 == 0 then
+				fs:SetJustifyH("LEFT")
+				PixelUtil.SetPoint(fs, fsPointV .. "LEFT", rightMost, fsPointV .. "RIGHT", GAP, 0); rightMost = fs
+			else
+				fs:SetJustifyH("RIGHT")
+				PixelUtil.SetPoint(fs, fsPointV .. "RIGHT", leftMost, fsPointV .. "LEFT", -GAP, 0); leftMost = fs
+			end
+		end
+	end
+end
+
+-- Side column anchoring: left/right of the bar, outside the outline + GAP.
+local function LayoutColumn(fsList, hb, slot)
+	local outward = slot == "left" and -1 or 1
+	local barSide = slot == "left" and "LEFT" or "RIGHT"
+	local nearSide = slot == "left" and "RIGHT" or "LEFT"     -- the FontString side that faces the bar
+	local groups = { top = {}, middle = {}, bottom = {} }
+	for _, item in ipairs(fsList) do
+		local g = groups[item.align] or groups.middle
+		g[#g + 1] = item.fs
+	end
+	for valign, list in pairs(groups) do
+		local v = valign == "top" and "TOP" or valign == "bottom" and "BOTTOM" or ""
+		local prev
+		for _, fs in ipairs(list) do
+			fs:ClearAllPoints()
+			fs:SetJustifyH(slot == "left" and "RIGHT" or "LEFT")
+			if prev then PixelUtil.SetPoint(fs, v .. nearSide, prev, v .. barSide, outward * GAP, 0)
+			else PixelUtil.SetPoint(fs, v .. nearSide, hb, v .. barSide, outward * (GAP + 1), 0) end
+			prev = fs
+		end
+	end
+end
+
+function Skin.LayoutTexts(uf)
+	if not uf.vpsText then return end
+	local hb = Client.HealthBar(uf)
+	if not hb then return end
+	local slots = { above = {}, below = {}, inside = {}, left = {}, right = {} }
+	for _, e in ipairs(db().elements) do
+		local fs = uf.vpsText[e.id]
+		if fs and fs.vpsVisible and slots[e.anchor] then
+			local list = slots[e.anchor]
+			list[#list + 1] = { fs = fs, align = e.align }
+		end
+	end
+	LayoutRow(slots.above, hb, "above")
+	LayoutRow(slots.below, hb, "below")
+	LayoutRow(slots.inside, hb, "inside")
+	LayoutColumn(slots.left, hb, "left")
+	LayoutColumn(slots.right, hb, "right")
 end
 
 --------------------------------------------------------------------------------
@@ -218,85 +355,34 @@ function Skin.ApplyTarget(uf, unit)
 	SetEdges(uf.vpsTarget, c[1], c[2], c[3], c[4] or 1, isTarget == true)
 end
 
-function Skin.ApplyLevel(uf, unit)
-	local lvl = uf.vpsLevel
-	if not lvl or not (IsModern() and db().showLevel) then return end
-	local level = Plain(UnitLevel(unit))
-	if level == nil then
-		-- secret (Forever restricted content): leave whatever stock shows; show nothing of ours
-		lvl:SetText("")
-		return
-	end
-	if level < 0 then
-		lvl:SetText(SKULL_TEXT)
-		lvl:SetTextColor(SKULL_COLOR[1], SKULL_COLOR[2], SKULL_COLOR[3])
-	else
-		lvl:SetText(tostring(level))
-		local playerLevel = UnitLevel("player") or 1
-		local attackable = Plain(UnitCanAttack("player", unit))
-		if attackable == false then
-			lvl:SetTextColor(0.8, 0.8, 0.8)
-		else
-			local r, g, b = Client.DifficultyColor(playerLevel, level)
-			lvl:SetTextColor(r, g, b)
-		end
-	end
-	Skin.ReapplyName(uf)
-end
-
 function Skin.ApplyUnit(uf, unit)
 	Skin.ApplyTarget(uf, unit)
-	Skin.ApplyLevel(uf, unit)
+	Skin.ApplyTexts(uf, unit)
 end
 
 -- The frame is going back to the pool: per-unit cues off so the next unit starts clean.
 function Skin.ClearUnit(uf)
 	if uf.vpsTarget then SetEdges(uf.vpsTarget, 1, 1, 1, 1, false) end
-	if uf.vpsLevel then uf.vpsLevel:SetText("") end
+	if uf.vpsText then for _, fs in pairs(uf.vpsText) do fs:SetText(""); fs.vpsVisible = false; fs:Hide() end end
 end
 
 --------------------------------------------------------------------------------
 -- Re-application after stock code undoes a property (hooks in Core.lua)
 --------------------------------------------------------------------------------
--- NamePlateUnitFrameMixin:UpdateAnchors re-sets barTexture, bgTexture anchors/layer, name
--- anchors and container height.
+-- NamePlateUnitFrameMixin:UpdateAnchors re-sets barTexture, bgTexture anchors/layer, the
+-- stock name anchors and container height.
 function Skin.ReapplyAfterAnchors(uf)
 	if not uf.vpsBacking then return end
 	ApplyFillTexture(uf)
 	ApplyBarHeight(uf)
 	ApplyBorderStyle(uf)
-	ApplyLevelPlacement(uf)
-	Skin.ReapplyName(uf)
+	Skin.ReapplyStockTexts(uf)
+	Skin.LayoutTexts(uf)
 end
 
 -- NamePlateHealthBarMixin:UpdateSelectionBorder re-shows selectedBorder/deselectedOverlay.
 function Skin.ReapplySelection(uf)
 	ApplyStockTargetCueAlpha(uf)
-	if IsModern() then
-		local deselected = Client.DeselectedOverlay(uf)
-		if deselected then deselected:SetAlpha(0) end
-	end
-end
-
--- Stock Modern style anchors the name LEFT to the bar and RIGHT to the health text and
--- left-justifies it, which reads as "right-justified" once the health text is empty and our
--- level sits at the right. In Modern Square we own the name's anchors: centred above the bar,
--- spanning the bar width. UpdateAnchors (hooked) and UpdateName (hooked) both land here.
-function Skin.ReapplyName(uf)
-	local name = Client.NameText(uf)
-	if not name then return end
-	local hb = Client.HealthBar(uf)
-	if not hb then return end
-	if not IsModern() then return end          -- Classic Clean keeps the stock layout
-	-- Era 1.15.9: the stock name FontString is a RESTRICTED region for addon code; any
-	-- measurement (GetPoint/GetWidth/GetEffectiveScale) raises "Can't measure restricted
-	-- regions". PixelUtil.SetPoint measures internally and therefore silently did nothing.
-	-- Plain SetPoint does not measure and is allowed.
-	-- Anchor to the BAR, not HealthBarsContainer: with Blizzard's "Classic" style selected the
-	-- bar is inset 3.5px left / 20.75px right inside the container (room for the stock level
-	-- badge), so container-centred text sits visibly right of the bar.
-	name:ClearAllPoints()
-	name:SetJustifyH("CENTER")
-	name:SetPoint("BOTTOMLEFT", hb, "TOPLEFT", 0, 2)
-	name:SetPoint("BOTTOMRIGHT", hb, "TOPRIGHT", 0, 2)
+	local deselected = Client.DeselectedOverlay(uf)
+	if deselected then deselected:SetAlpha(0) end
 end
