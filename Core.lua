@@ -8,13 +8,15 @@
 local ADDON, VPS = ...
 local Client = VPS.Client
 
-local VPS_DB_VERSION = 3   -- 1 -> 2: barStyle/borderDarken/showLevel dropped; elements list added. 2 -> 3: over-level default red/+2
+local VPS_DB_VERSION = 4   -- 1->2 elements list; 2->3 over-level default red/+2; 3->4 default layout = owner's favourite
 
 -- Default VPS_TextElement rows, in stacking order. Copied (deep) into a fresh DB.
+-- The owner's favourite layout (2026-11-23): name inside-left, current health inside-right,
+-- level above-right and a touch larger, health % off. See Assets\Screenshots.
 VPS.DEFAULT_ELEMENTS = {
-	{ id = "name",      label = "Name",     format = "[name]",  anchor = "above",  align = "center", size = 10, color = "stock" },
-	{ id = "level",     label = "Level",    format = "[level]", anchor = "inside", align = "right",  size = 9,  color = "difficulty" },
-	{ id = "health",    label = "Health",   format = "[hp]",    anchor = "hidden", align = "right",  size = 9,  color = "white" },
+	{ id = "name",      label = "Name",     format = "[name]",  anchor = "inside", align = "left",   size = 10, color = "stock" },
+	{ id = "level",     label = "Level",    format = "[level]", anchor = "above",  align = "right",  size = 11, color = "difficulty" },
+	{ id = "health",    label = "Health",   format = "[hp]",    anchor = "inside", align = "right",  size = 9,  color = "white" },
 	{ id = "healthpct", label = "Health %", format = "[hp%]",   anchor = "hidden", align = "right",  size = 9,  color = "white" },
 }
 VPS.BUILTIN_ELEMENT_IDS = { name = true, level = true, health = true, healthpct = true }
