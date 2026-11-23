@@ -32,10 +32,11 @@
       reorder arrows + create-custom-element box, Classic Clean retired (`barStyle`/`borderDarken` dropped).
       Plates in Blizzard's show-only-name / widgets-only mode are left fully stock (`Skin.IsBarMode`).
 - [ ] **M2b — Visual texture picker** (per-row-textured list for textures; fonts if a font column is added later).
-- [x] **M2c — Over-leveled highlight (2026-11-23, 58cb482..fab5a49).** Target section renamed *Target Highlight*;
-      `overLevelMode` none / animated / red / animatedRed (default **animatedRed**, threshold **+2**, skull always) using
-      Blizzard's `ActionButtonSpellAlertTemplate` proc flipbook stretched to the bar and vertex-coloured; red modes also
-      redden the 1px outline and the name element; fallback 3px pulsing border if the template cannot be created.
+- [x] **M2c — Over-leveled highlight (2026-11-23, 58cb482..9f5b39e).** Target section renamed *Target Highlight*;
+      `overLevelMode` none / animated / red / animatedRed (default **animatedRed**, threshold **+2**, skull always).
+      Animated = our own `Assets\hatch.tga` stripes tiled over the bar, scrolled by a looping `TextureCoordTranslation`
+      (Blizzard's aggro-flare mechanism) + alpha pulse, additive, gold/red; red modes also redden the outline and name.
+      Tried and rejected: the 10.x `ActionButtonSpellAlertTemplate` flipbook (smears to a static tint on a bar).
       Lesson: XML template names are not Lua globals — never guard on them.
 - [ ] **M3 — Threat level (classification) modes + danger emphasis.** Text / Frame / Icon+Frame modes, danger threshold.
 - [ ] **M4 — Forever client file + verification pass** on 1.60.1 (R5 path throughout).
