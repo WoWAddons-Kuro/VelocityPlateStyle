@@ -443,9 +443,12 @@ local GLOW_PAD_X, GLOW_PAD_Y = 1.35, 2.6     -- the proc atlas has transparent m
 local function AcquireGlow(uf, hb)
 	local glow = uf.vpsGlow
 	if glow then return glow end
-	if not ActionButtonSpellAlertTemplate and not _G.ActionButtonSpellAlertMixin then return nil end
 	local ok, frame = pcall(CreateFrame, "Frame", nil, hb, "ActionButtonSpellAlertTemplate")
-	if not ok or not frame then return nil end
+	if not ok or not frame or not frame.ProcLoopFlipbook then
+		Skin.glowError = ok and "template created but has no ProcLoopFlipbook" or tostring(frame)
+		return nil
+	end
+	Skin.glowError = nil
 	frame:SetFrameLevel(hb:GetFrameLevel())        -- below foreign icons (which sit on higher-level frames)
 	frame:Hide()
 	uf.vpsGlow = frame

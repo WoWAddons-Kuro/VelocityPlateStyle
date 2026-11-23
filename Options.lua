@@ -440,6 +440,11 @@ SlashCmdList.VELOCITYPLATESTYLE = function(msg)
 			VPS.Print(string.format("  %-10s %s/%s size=%s %s text=%q w=%s", e.id, e.anchor, e.align, tostring(size), e.color,
 				fs and (fs:GetText() or "") or "-", fs and tostring(fs.vpsWidth) or "-"))
 		end
+		local glow = uf.vpsGlow
+		VPS.Print(string.format("overlevel: mode=%s threshold=%s unitLevel=%s playerLevel=%s verdict=%s glow=%s shown=%s err=%s",
+			tostring(VPS.db.overLevelMode), tostring(VPS.db.overLevelThreshold), tostring(UnitLevel("target")), tostring(UnitLevel("player")),
+			tostring(VPS.Skin.IsOverLevel("target")), glow and "created" or "nil", glow and tostring(glow:IsShown()) or "-",
+			tostring(VPS.Skin.glowError)))
 		VPS.Print("stock: useClassicHealthBar=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.useClassicHealthBar) .. " nameAnchorStyle=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.unitNameAnchorStyle))
 	else
 		VPS.Print("/vps  |  /vps status  |  /vps reset  |  /vps debug (target's plate)")
