@@ -436,22 +436,25 @@ end
 -- Over-level highlight: unitLevel >= playerLevel + threshold, or skull.
 --
 -- "animated" / "animatedRed" (owner's spec, 2026-11-23): the bar keeps Blizzard's own fill colour
--- (red hostile / yellow neutral) and a second FULL-BAR layer is drawn over it: the SharedMedia
--- "Perl" statusbar texture (Assets\perl.tga, from EasyFrames: 64x8, fully opaque mid-grey with a
--- few bright diagonal streaks) vertex-coloured the CONTRAST colour - yellow over a red bar, red
--- over a yellow bar - at partial alpha with NORMAL blend, tiled along the bar and scrolled
+-- (red hostile / yellow neutral) and a second FULL-BAR layer is drawn over it in the CONTRAST
+-- colour - yellow over a red bar, red over a yellow bar - tiled along the bar and scrolled
 -- left-to-right by a looping TextureCoordTranslation (the client mechanism the stock aggro flare
--- uses). Result: the whole bar turns the contrast colour with Perl's streaks sliding across it.
--- (ADD blend was wrong: it only brightened the streaks and left the grey body invisible.)
+-- uses). The layer texture is a VPS_SweepTexture chosen by GLOW_TEXTURE:
+--   leftgrad.tga  SharedMedia "Left White Gradient" (Details): 256x32 white, ALPHA 0.5 at the left
+--                 edge falling to 0 by ~75% across. Tiled + scrolled = repeating soft WAVES of the
+--                 contrast colour sweeping along the bar, the bar's own colour showing through the
+--                 transparent tail. Normal blend; the asset's alpha does the work.   <- current
+--   perl.tga      SharedMedia "Perl" (EasyFrames): 64x8 opaque grey + bright streaks. Needs partial
+--                 alpha to let the bar through; turns the whole bar the contrast colour.
 -- "animated" = the same with a fixed yellow overlay. No Lua runs per frame (R4). Red modes also
 -- turn the 1px outline red. "red": static red outline only. Text colours are never touched.
 --------------------------------------------------------------------------------
 local OVER_LEVEL_RED = { 1, 0.15, 0.1 }
 local OVER_LEVEL_YELLOW = { 1, 0.85, 0.1 }
-local GLOW_TEXTURE = "Interface\\AddOns\\" .. ADDON .. "\\Assets\\perl.tga"
-local GLOW_TILE_PX = 64                              -- perl.tga width: tile it so the streaks keep their shape on any bar width
-local GLOW_SWEEP_SEC = 0.8                           -- one tile-width of travel per cycle (streak speed)
-local GLOW_ALPHA = 0.7                               -- bar colour still reads through Perl's darker bands
+local GLOW_TEXTURE = "Interface\\AddOns\\" .. ADDON .. "\\Assets\\leftgrad.tga"
+local GLOW_TILE_PX = 96                              -- on-screen px per repeat of the gradient (wave length); the asset is 256 wide
+local GLOW_SWEEP_SEC = 1.0                           -- one wave-length of travel per cycle
+local GLOW_ALPHA = 1.0                               -- the gradient carries its own alpha (0.5 peak); no extra fade
 local GLOW_PAD = 0                                   -- stays inside the 1px outline
 
 local function AcquireGlow(uf, hb)
