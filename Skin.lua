@@ -240,7 +240,6 @@ function Skin.ApplyLevel(uf, unit)
 			lvl:SetTextColor(r, g, b)
 		end
 	end
-	ApplyNameClearance(uf)
 	Skin.ReapplyName(uf)
 end
 
@@ -278,23 +277,19 @@ function Skin.ReapplySelection(uf)
 	end
 end
 
--- CompactUnitFrame_UpdateName re-sets text/colour/shown; our only concern is the right
--- clearance for the level number. The name's RIGHT anchor is relative to the health text
--- (Modern style) so we add padding to that point only.
+-- Stock Modern style anchors the name LEFT to the bar and RIGHT to the health text and
+-- left-justifies it, which reads as "right-justified" once the health text is empty and our
+-- level sits at the right. In Modern Square we own the name's anchors: centred above the bar,
+-- spanning the bar width. UpdateAnchors (hooked) and UpdateName (hooked) both land here.
 function Skin.ReapplyName(uf)
 	local name = Client.NameText(uf)
-	if not name or not name.vpsRightPad then return end
+	if not name then return end
 	local hb = Client.HealthBar(uf)
 	if not hb then return end
-	-- Find the existing RIGHT point and re-set it with our pad added to its x offset.
-	for i = 1, name:GetNumPoints() do
-		local point, rel, relPoint, x, y = name:GetPoint(i)
-		if point == "RIGHT" or point == "BOTTOMRIGHT" then
-			if not name.vpsBaseRightX or name.vpsLastRel ~= rel then
-				name.vpsBaseRightX, name.vpsLastRel = x, rel
-			end
-			name:SetPoint(point, rel, relPoint, name.vpsBaseRightX - name.vpsRightPad, y)
-			return
-		end
-	end
+	if not IsModern() then return end          -- Classic Clean keeps the stock layout
+	local container = Client.HealthBarContainer(uf) or hb
+	name:ClearAllPoints()
+	name:SetJustifyH("CENTER")
+	PixelUtil.SetPoint(name, "BOTTOMLEFT", container, "TOPLEFT", 0, 2)
+	PixelUtil.SetPoint(name, "BOTTOMRIGHT", container, "TOPRIGHT", 0, 2)
 end
