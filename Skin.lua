@@ -151,15 +151,50 @@ end
 
 -- Every stock text we replace with our own elements: name, health strings, level regions.
 function Skin.ReapplyStockTexts(uf)
+	if not Skin.IsBarMode(uf) then Skin.RestoreStock(uf); return end
 	local name = Client.NameText(uf)
 	if name then name:SetAlpha(0) end
 	for _, fs in ipairs(Client.HealthTexts(uf) or {}) do fs:SetAlpha(0) end
 	for _, region in ipairs(Client.StockLevelRegions(uf) or {}) do region:SetAlpha(0) end
 end
 
+-- A plate is only ours to restyle while Blizzard draws its health bar. Friendly NPCs/players
+-- with "show only names" (and simplified / widgets-only plates) have the bar Hide()-den and
+-- the stock name standing alone where the bar would be; those plates stay exactly stock.
+function Skin.IsBarMode(uf)
+	local hb = Client.HealthBar(uf)
+	if not hb or not hb:IsShown() then return false end
+	if uf.IsShowOnlyName and uf:IsShowOnlyName() then return false end
+	if uf.widgetsOnlyMode then return false end
+	return true
+end
+
+-- Put every stock region we touch back to its default alpha and hide our own regions.
+function Skin.RestoreStock(uf)
+	local name = Client.NameText(uf)
+	if name then name:SetAlpha(1) end
+	for _, fs in ipairs(Client.HealthTexts(uf) or {}) do fs:SetAlpha(1) end
+	for _, region in ipairs(Client.StockLevelRegions(uf) or {}) do region:SetAlpha(1) end
+	local backingStock = Client.HealthBarBacking(uf)
+	local deselected = Client.DeselectedOverlay(uf)
+	local selected = Client.SelectedBorder(uf)
+	local highlight = Client.SelectionHighlight(uf)
+	if backingStock then backingStock:SetAlpha(1); backingStock:SetVertexColor(1, 1, 1, 1) end
+	if deselected then deselected:SetAlpha(1) end
+	if selected then selected:SetAlpha(1) end
+	if highlight then highlight:SetAlpha(0.25) end          -- XML default alpha
+	if uf.vpsBacking then uf.vpsBacking:Hide() end
+	if uf.vpsOutline then SetEdges(uf.vpsOutline, 0, 0, 0, 0, false) end
+	if uf.vpsTarget then SetEdges(uf.vpsTarget, 1, 1, 1, 1, false) end
+	if uf.vpsText then for _, fs in pairs(uf.vpsText) do fs:Hide(); fs.vpsVisible = false end end
+	uf.vpsStockMode = true
+end
+
 function Skin.ApplyStatic(uf)
 	local hb = AcquireOwnRegions(uf)
 	if not hb then return end
+	if not Skin.IsBarMode(uf) then Skin.RestoreStock(uf); return end
+	uf.vpsStockMode = nil
 	ApplyFillTexture(uf)
 	ApplyBarHeight(uf)
 	ApplyBorderStyle(uf)
@@ -210,6 +245,7 @@ end
 -- Returns true when any element's shown-state or text changed (caller relays out).
 function Skin.ApplyTexts(uf, unit, healthOnly)
 	if not uf.vpsText then return end
+	if uf.vpsStockMode or not Skin.IsBarMode(uf) then Skin.RestoreStock(uf); return end
 	local hb = Client.HealthBar(uf)
 	if not hb then return end
 	local level = Plain(UnitLevel(unit))
@@ -373,6 +409,9 @@ end
 -- stock name anchors and container height.
 function Skin.ReapplyAfterAnchors(uf)
 	if not uf.vpsBacking then return end
+	-- Show-only-name / simplified state may have flipped; UpdateAnchors runs on every such change.
+	if not Skin.IsBarMode(uf) then Skin.RestoreStock(uf); return end
+	if uf.vpsStockMode then Skin.ApplyStatic(uf); if uf.unit then Skin.ApplyTexts(uf, uf.unit) end; return end
 	ApplyFillTexture(uf)
 	ApplyBarHeight(uf)
 	ApplyBorderStyle(uf)
@@ -382,6 +421,7 @@ end
 
 -- NamePlateHealthBarMixin:UpdateSelectionBorder re-shows selectedBorder/deselectedOverlay.
 function Skin.ReapplySelection(uf)
+	if not Skin.IsBarMode(uf) then return end
 	ApplyStockTargetCueAlpha(uf)
 	local deselected = Client.DeselectedOverlay(uf)
 	if deselected then deselected:SetAlpha(0) end
