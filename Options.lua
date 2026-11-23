@@ -206,8 +206,8 @@ local function CreateOptions()
 		for _, m in ipairs(VPS.OVER_LEVEL_MODES) do out[#out + 1] = { key = m, name = OVER_LEVEL_LABEL[m] } end
 		return out
 	end), 48, -6)
-	tg:Add(Slider(tg, "VelocityPlateStyleOverLevelThreshold", "overLevelThreshold", 1, 10, 1,
-		function(v) return string.format("Over-leveled when the mob is %d+ levels above you (skull always counts)", v) end), 44, -4)
+	tg:Add(Slider(tg, "VelocityPlateStyleOverLevelThreshold", "overLevelThreshold", -5, 10, 1,
+		function(v) return v <= 0 and string.format("Over-leveled when the mob is at most %d levels below you (TEST: negative = light up everything)", -v) or string.format("Over-leveled when the mob is %d+ levels above you (skull always counts)", v) end), 44, -4)
 	tg:Finish()
 
 	-- Section: Text (the element grid) -------------------------------------------------
