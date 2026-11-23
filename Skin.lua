@@ -300,34 +300,69 @@ local function LayoutRow(fsList, hb, slot)
 		local g = groups[item.align] or groups.left
 		g[#g + 1] = item.fs
 	end
-	-- left group: first at bar left, next to its right
-	local prev
-	for _, fs in ipairs(groups.left) do
-		fs:ClearAllPoints()
-		fs:SetJustifyH("LEFT")
-		if prev then PixelUtil.SetPoint(fs, fsPointV .. "LEFT", prev, fsPointV .. "RIGHT", GAP, 0)
-		else PixelUtil.SetPoint(fs, fsPointV .. "LEFT", hb, barPointV .. "LEFT", slot == "inside" and 3 or 0, yOff) end
-		prev = fs
-	end
+	-- Overflow policy: the RIGHT group is laid first (fixed-width values: level, health). The
+	-- LEFT group's last element and the CENTER chain are then bounded on the right by the
+	-- innermost right element, so a long name truncates with "..." instead of running under it.
+	local inset = slot == "inside" and 3 or 0
 	-- right group: first at bar right, next to its left
-	prev = nil
+	local prev
+	local rightInner           -- the right-group element nearest the bar's centre, if any
 	for _, fs in ipairs(groups.right) do
 		fs:ClearAllPoints()
 		fs:SetJustifyH("RIGHT")
+		fs:SetWidth(0)                         -- natural width
 		if prev then PixelUtil.SetPoint(fs, fsPointV .. "RIGHT", prev, fsPointV .. "LEFT", -GAP, 0)
-		else PixelUtil.SetPoint(fs, fsPointV .. "RIGHT", hb, barPointV .. "RIGHT", slot == "inside" and -3 or 0, yOff) end
+		else PixelUtil.SetPoint(fs, fsPointV .. "RIGHT", hb, barPointV .. "RIGHT", -inset, yOff) end
+		prev = fs
+		rightInner = fs
+	end
+	-- left group: first at bar left, next to its right; the last one is bounded on the right
+	prev = nil
+	local n = #groups.left
+	for i, fs in ipairs(groups.left) do
+		fs:ClearAllPoints()
+		fs:SetJustifyH("LEFT")
+		fs:SetWidth(0)
+		if prev then PixelUtil.SetPoint(fs, fsPointV .. "LEFT", prev, fsPointV .. "RIGHT", GAP, 0)
+		else PixelUtil.SetPoint(fs, fsPointV .. "LEFT", hb, barPointV .. "LEFT", inset, yOff) end
+		if i == n then
+			-- Two-point anchor: width = free space, text truncates. (SetWordWrap(false) is set at creation.)
+			if rightInner then PixelUtil.SetPoint(fs, fsPointV .. "RIGHT", rightInner, fsPointV .. "LEFT", -GAP, 0)
+			else PixelUtil.SetPoint(fs, fsPointV .. "RIGHT", hb, barPointV .. "RIGHT", -inset, yOff) end
+		end
 		prev = fs
 	end
+	local leftOuter = groups.left[n]      -- the left-group element nearest the centre, if any
 	-- center group: first centred; the rest alternate right/left of the chain
 	local first = groups.center[1]
 	if first then
 		first:ClearAllPoints()
 		first:SetJustifyH("CENTER")
-		PixelUtil.SetPoint(first, fsPointV == "" and "CENTER" or fsPointV, hb, barPointV == "" and "CENTER" or barPointV, 0, yOff)
+		first:SetWidth(0)
+		if #groups.center == 1 and (leftOuter or rightInner) then
+			-- Single centred element with neighbours: span the free space so it truncates rather
+			-- than overlapping. (The left group's last element then truncates against the bar edge;
+			-- re-bound it to this element instead.)
+			if leftOuter then PixelUtil.SetPoint(first, fsPointV .. "LEFT", leftOuter, fsPointV .. "RIGHT", GAP, 0)
+			else PixelUtil.SetPoint(first, fsPointV .. "LEFT", hb, barPointV .. "LEFT", inset, yOff) end
+			if rightInner then PixelUtil.SetPoint(first, fsPointV .. "RIGHT", rightInner, fsPointV .. "LEFT", -GAP, 0)
+			else PixelUtil.SetPoint(first, fsPointV .. "RIGHT", hb, barPointV .. "RIGHT", -inset, yOff) end
+			if leftOuter then
+				leftOuter:ClearAllPoints()
+				leftOuter:SetJustifyH("LEFT")
+				leftOuter:SetWidth(0)
+				local before = groups.left[n - 1]
+				if before then PixelUtil.SetPoint(leftOuter, fsPointV .. "LEFT", before, fsPointV .. "RIGHT", GAP, 0)
+				else PixelUtil.SetPoint(leftOuter, fsPointV .. "LEFT", hb, barPointV .. "LEFT", inset, yOff) end
+			end
+		else
+			PixelUtil.SetPoint(first, fsPointV == "" and "CENTER" or fsPointV, hb, barPointV == "" and "CENTER" or barPointV, 0, yOff)
+		end
 		local rightMost, leftMost = first, first
 		for i = 2, #groups.center do
 			local fs = groups.center[i]
 			fs:ClearAllPoints()
+			fs:SetWidth(0)
 			if i % 2 == 0 then
 				fs:SetJustifyH("LEFT")
 				PixelUtil.SetPoint(fs, fsPointV .. "LEFT", rightMost, fsPointV .. "RIGHT", GAP, 0); rightMost = fs
