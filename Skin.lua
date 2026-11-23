@@ -22,6 +22,12 @@ local function IsModern() return db().barStyle == "modern" end
 -- Our own regions (created on first use, parented to the health bar)
 --------------------------------------------------------------------------------
 -- Four 1px textures around a rect; parent is the bar so they move/scale with it.
+-- Snap every edge to the pixel grid so 1px lines stay 1 crisp pixel at any UI scale.
+local function PixelSnap(t)
+	if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(true) end
+	if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
+end
+
 local function AcquireEdges(parent, key, layer, sublevel)
 	local edges = parent[key]
 	if edges then return edges end
@@ -29,6 +35,7 @@ local function AcquireEdges(parent, key, layer, sublevel)
 	for _, side in ipairs({ "Top", "Bottom", "Left", "Right" }) do
 		local t = parent:CreateTexture(nil, layer, nil, sublevel)
 		t:SetTexture(WHITE8)
+		PixelSnap(t)
 		edges[side] = t
 	end
 	parent[key] = edges
@@ -144,6 +151,19 @@ end
 
 -- Level placement. Modern Square: our FontString inside the bar; Forever's stock level box
 -- (PlayerLevelDiffFrame) alpha-zeroed. Classic Clean: ours hidden, stock regions restored.
+--
+-- Font size is set with SetFont (re-rasterises the glyphs at that size), NOT SetTextHeight,
+-- which stretches the already-rendered string and is what makes stock plate text blurry.
+local function ApplyLevelFont(lvl)
+	local size = math.max(8, math.floor(db().barHeight * 0.75 + 0.5))
+	local path, _, flags = lvl:GetFont()
+	if not path then
+		local fo = _G[LEVEL_FONT]
+		if fo then path, _, flags = fo:GetFont() end
+	end
+	if path then lvl:SetFont(path, size, flags or "OUTLINE") end
+end
+
 local function ApplyLevelPlacement(uf)
 	local hb = Client.HealthBar(uf)
 	local lvl = uf.vpsLevel
@@ -154,7 +174,7 @@ local function ApplyLevelPlacement(uf)
 	if useOurs then
 		lvl:ClearAllPoints()
 		PixelUtil.SetPoint(lvl, "RIGHT", hb, "RIGHT", -3, 0)
-		lvl:SetTextHeight(math.max(8, math.floor(db().barHeight * 0.8 + 0.5)))
+		ApplyLevelFont(lvl)
 		lvl:Show()
 	else
 		lvl:Hide()
