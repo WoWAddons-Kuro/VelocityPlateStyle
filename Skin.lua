@@ -513,10 +513,8 @@ function Skin.ApplyOverLevel(uf, unit)
 	-- every red mode turns the 1px outline red so the cue reads at any bar size
 	if on and isRed then SetEdges(uf.vpsOutline, OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3], 1, true)
 	else SetEdges(uf.vpsOutline, 0, 0, 0, 1, true) end
-	-- red modes also tint the name element (ApplyTexts has just set the configured colour otherwise)
-	local nameFs = uf.vpsText and uf.vpsText.name
-	if nameFs and on and isRed then nameFs:SetTextColor(OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3]) end
-	-- pulsing glow
+	-- Text colours are never touched by the highlight (owner rule 2026-11-23): the name keeps whatever
+	-- its element's colour mode says. Sweep layer:
 	local wantGlow = on and (mode == "animated" or mode == "animatedRed")
 	local glow = uf.vpsGlow or (wantGlow and AcquireGlow(uf, hb))
 	if not glow then return end
