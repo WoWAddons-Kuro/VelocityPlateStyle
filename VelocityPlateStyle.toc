@@ -13,6 +13,7 @@ Client\Client.lua
 Client\Client_ClassicEra.lua
 Client\Client_Forever.lua
 Client\Client_Select.lua
+Templates.xml
 Core.lua
 Textures.lua
 Format.lua

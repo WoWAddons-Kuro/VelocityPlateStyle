@@ -1,0 +1,24 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\..\FrameXML\UI.xsd">
+
+	<!--
+		VPS_SweepTextureTemplate: the over-level sheen layer.
+
+		Why XML: on Classic Era 1.15.9 the Lua TextureCoordTranslation animation object has NO offset
+		setter (SetOffset / SetOffsetU are absent; confirmed in game 2026-11-23 via /vps anim), even though
+		Blizzard_APIDocumentationGenerated claims SetOffset exists. offsetU/offsetV can only be given as
+		XML attributes, which is exactly how Blizzard's stock nameplate aggro flare does it
+		(Blizzard_NamePlates.xml AggroHighlightScrollAnim). The texture, tiling, blend and the looping
+		scroll are all declared here; Lua only sizes, colours, shows and plays it.
+
+		offsetU="-1": one full tile travels left-to-right per cycle. duration is the speed knob.
+	-->
+	<Texture name="VPS_SweepTextureTemplate" virtual="true" hidden="true" alphaMode="BLEND"
+	         file="Interface\AddOns\VelocityPlateStyle\Assets\leftgrad.tga" horizTile="true" vertTile="false">
+		<Animations>
+			<AnimationGroup parentKey="Sweep" looping="REPEAT">
+				<TextureCoordTranslation duration="1.0" order="1" offsetU="-1" offsetV="0"/>
+			</AnimationGroup>
+		</Animations>
+	</Texture>
+</Ui>

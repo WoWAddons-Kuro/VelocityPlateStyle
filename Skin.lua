@@ -82,6 +82,14 @@ local function AcquireOwnRegions(uf)
 		uf.vpsBacking = backing
 		uf.vpsOutline = AcquireEdges(hb, "vpsOutlineEdges", "BACKGROUND", -6)
 		uf.vpsTarget = AcquireEdges(hb, "vpsTargetEdges", "BACKGROUND", -5)
+		-- Everything that must draw ON TOP of the bar's fill lives on this child frame: a StatusBar
+		-- composites its fill above every region it owns regardless of layer, so regions on the bar
+		-- itself only show in the margins. One frame level up, the whole bar surface is ours.
+		-- The over-level sheen is ARTWORK here; element text is OVERLAY here (above the sheen).
+		local top = CreateFrame("Frame", nil, hb)
+		top:SetFrameLevel(hb:GetFrameLevel() + 1)
+		top:SetAllPoints(hb)
+		uf.vpsTop = top
 		uf.vpsText = {}          -- VPS_ElementID -> FontString
 	end
 	return hb
@@ -91,7 +99,7 @@ end
 local function AcquireText(uf, hb, id)
 	local fs = uf.vpsText[id]
 	if fs then return fs end
-	fs = hb:CreateFontString(nil, "OVERLAY", TEXT_FONT)
+	fs = uf.vpsTop:CreateFontString(nil, "OVERLAY", TEXT_FONT)
 	fs:SetWordWrap(false)
 	uf.vpsText[id] = fs
 	return fs
@@ -459,23 +467,22 @@ local GLOW_PAD = 0                                   -- stays inside the 1px out
 
 local function AcquireGlow(uf, hb)
 	if uf.vpsGlow then return uf.vpsGlow end
-	-- OVERLAY sublevel -1: a StatusBar composites its fill ABOVE its BACKGROUND/BORDER/ARTWORK
-	-- regions, so anything meant to sit on top of the fill must be OVERLAY (our text is OVERLAY 0
-	-- and visibly draws over the fill; the same texture on ARTWORK 1 was fully occluded - 3 builds
-	-- of "nothing changed", 9f5b39e..1b57f85).
-	local tex = hb:CreateTexture(nil, "OVERLAY", nil, -1)
-	tex:SetTexture(GLOW_TEXTURE)
-	tex:SetHorizTile(true)
-	tex:SetVertTile(false)
-	tex:SetBlendMode("BLEND")          -- normal alpha blend: the texture body COVERS the bar in the contrast colour
+	-- On uf.vpsTop (one frame level above the bar, see AcquireOwnRegions): covers the ENTIRE bar
+	-- surface, under the element text which is OVERLAY on the same frame. Regions placed on the bar
+	-- itself only ever showed in the margin outside the fill.
+	--
+	-- Texture, tiling, blend and the looping UV scroll come from Templates.xml
+	-- (VPS_SweepTextureTemplate). On Era 1.15.9 the Lua TextureCoordTranslation object has NO
+	-- offset setter whatsoever (SetOffset / SetOffsetU / SetTexCoord all nil; /vps anim, 2026-11-23),
+	-- despite the generated API docs - offsetU is XML-only, exactly as Blizzard's stock aggro flare
+	-- declares it. Lua only sizes, colours, shows and plays.
+	local tex = uf.vpsTop:CreateTexture(nil, "ARTWORK", "VPS_SweepTextureTemplate")
+	if not tex or not tex.Sweep then
+		Skin.glowError = "VPS_SweepTextureTemplate did not load (Templates.xml missing from the TOC?)"
+		return nil
+	end
 	tex:SetAlpha(GLOW_ALPHA)
-	tex:Hide()
-	local scrollGroup = tex:CreateAnimationGroup()
-	scrollGroup:SetLooping("REPEAT")
-	local scroll = scrollGroup:CreateAnimation("TextureCoordTranslation")
-	-- One tile-width of travel per cycle; with the texture tiled, the pattern streams continuously.
-	scroll:SetOffset(-1, 0); scroll:SetDuration(GLOW_SWEEP_SEC)
-	uf.vpsGlow = { tex = tex, scrollGroup = scrollGroup }
+	uf.vpsGlow = { tex = tex, scrollGroup = tex.Sweep }
 	return uf.vpsGlow
 end
 

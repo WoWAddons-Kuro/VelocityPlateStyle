@@ -446,6 +446,20 @@ SlashCmdList.VELOCITYPLATESTYLE = function(msg)
 			tostring(VPS.Skin.IsOverLevel("target")), glow and "created" or "nil", glow and tostring(glow.tex:IsShown()) or "-",
 			glow and tostring(glow.scrollGroup:IsPlaying()) or "-"))
 		VPS.Print("stock: useClassicHealthBar=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.useClassicHealthBar) .. " nameAnchorStyle=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.unitNameAnchorStyle))
+	elseif msg == "anim" then
+		-- Probe: what does CreateAnimation("TextureCoordTranslation") actually hand back on this client?
+		local f = CreateFrame("Frame")
+		local t = f:CreateTexture()
+		local ag = t:CreateAnimationGroup()
+		local ok, a = pcall(ag.CreateAnimation, ag, "TextureCoordTranslation")
+		if not ok then VPS.Print("CreateAnimation failed: " .. tostring(a)); return end
+		VPS.Print("object type: " .. tostring(a:GetObjectType()))
+		local names = {}
+		local mt = getmetatable(a); local idx = mt and mt.__index
+		if type(idx) == "table" then for k in pairs(idx) do if type(k) == "string" and (k:find("Offset") or k:find("Coord") or k:find("Set")) then names[#names + 1] = k end end end
+		table.sort(names)
+		VPS.Print("methods matching Offset/Coord/Set*: " .. table.concat(names, ", "))
+		VPS.Print("SetOffset=" .. tostring(a.SetOffset) .. " SetOffsetU=" .. tostring(a.SetOffsetU) .. " SetTexCoord=" .. tostring(a.SetTexCoord))
 	else
 		VPS.Print("/vps  |  /vps status  |  /vps reset  |  /vps debug (target's plate)")
 	end

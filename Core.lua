@@ -49,6 +49,44 @@ VPS.db = nil
 local COLOR = "|cff80c0ff"
 function VPS.Print(msg) print(COLOR .. "VelocityPlateStyle|r: " .. tostring(msg)) end
 
+--------------------------------------------------------------------------------
+-- Fail loudly. Every styling entry point (events, hooksecurefunc post-hooks) runs through
+-- VPS.Guard so an error inside Skin can never be swallowed: it is re-raised to the global
+-- error handler (BugSack/BugGrabber see it with the full stack), counted, and announced in chat
+-- ONCE per distinct message so the owner knows the addon is throwing even with Lua errors
+-- display off. /vps status prints the count; /vps debug prints the last message.
+--
+-- Throttled: styling runs on UNIT_HEALTH and every plate add, so a persistent fault would fire
+-- dozens of times a second. Per distinct message: chat line once, error-handler delivery at most
+-- once per THROTTLE_SEC, everything else just counted (the count is in /vps status).
+--------------------------------------------------------------------------------
+VPS.errorCount = 0
+VPS.lastError = nil
+local THROTTLE_SEC = 5
+local seen = {}        -- key -> { announced = bool, lastDelivered = GetTime(), count = n }
+function VPS.Guard(label, fn, ...)
+	local ok, err = pcall(fn, ...)
+	if ok then return true end
+	VPS.errorCount = VPS.errorCount + 1
+	local msg = tostring(err)
+	VPS.lastError = label .. ": " .. msg
+	local key = label .. "|" .. (msg:gsub(":%d+:", ":"))
+	local rec = seen[key]
+	if not rec then rec = { count = 0, lastDelivered = -math.huge }; seen[key] = rec end
+	rec.count = rec.count + 1
+	if not rec.announced then
+		rec.announced = true
+		VPS.Print("|cffff4040ERROR|r in " .. label .. " - " .. msg .. "  (details in BugSack; repeats are counted, see /vps status)")
+	end
+	local now = GetTime()
+	if now - rec.lastDelivered >= THROTTLE_SEC then
+		rec.lastDelivered = now
+		-- Hand it to the error handler so BugSack keeps a stack-bearing copy; repeat count attached.
+		geterrorhandler()(VPS.lastError .. (rec.count > 1 and (" (x" .. rec.count .. ")") or ""))
+	end
+	return false
+end
+
 -- R8 / BUG 12: a secret value becomes nil; the caller skips the cue for this pass.
 local issecretvalue = issecretvalue or function() return false end
 function VPS.Plain(v)
@@ -209,11 +247,11 @@ VPS.ForEachUnitFrame = ForEachUnitFrame
 local function StyleUnitFrame(uf, unit)
 	if VPS.standDown then return end
 	if uf.vpsStyled ~= VPS.styleVersion then
-		VPS.Skin.ApplyStatic(uf)
+		if not VPS.Guard("ApplyStatic", VPS.Skin.ApplyStatic, uf) then return end
 		uf.vpsStyled = VPS.styleVersion
 		VPS.InstallFrameHooks(uf)
 	end
-	if unit then VPS.Skin.ApplyUnit(uf, unit) end
+	if unit then VPS.Guard("ApplyUnit", VPS.Skin.ApplyUnit, uf, unit) end
 end
 
 -- Re-run static + per-unit styling on every visible plate. Called by every option change.
@@ -236,7 +274,7 @@ function VPS.InstallFrameHooks(uf)
 	if type(uf.UpdateAnchors) == "function" then
 		hooksecurefunc(uf, "UpdateAnchors", function(frame)
 			if VPS.standDown or frame:IsForbidden() then return end
-			VPS.Skin.ReapplyAfterAnchors(frame)
+			VPS.Guard("ReapplyAfterAnchors", VPS.Skin.ReapplyAfterAnchors, frame)
 		end)
 	end
 	-- UpdateSelectionBorder (health bar): shows selectedBorder/deselectedOverlay on target change.
@@ -244,7 +282,7 @@ function VPS.InstallFrameHooks(uf)
 	if hb and type(hb.UpdateSelectionBorder) == "function" then
 		hooksecurefunc(hb, "UpdateSelectionBorder", function()
 			if VPS.standDown or uf:IsForbidden() then return end
-			VPS.Skin.ReapplySelection(uf)
+			VPS.Guard("ReapplySelection", VPS.Skin.ReapplySelection, uf)
 		end)
 	end
 end
@@ -254,15 +292,15 @@ local function InstallGlobalHooks()
 	if type(CompactUnitFrame_UpdateLevel) == "function" then
 		hooksecurefunc("CompactUnitFrame_UpdateLevel", function(frame)
 			if VPS.standDown or not frame.vpsStyled or frame:IsForbidden() then return end
-			if frame.unit then VPS.Skin.ApplyTexts(frame, frame.unit) end
+			if frame.unit then VPS.Guard("ApplyTexts/UpdateLevel", VPS.Skin.ApplyTexts, frame, frame.unit) end
 		end)
 	end
 	if type(CompactUnitFrame_UpdateName) == "function" then
 		hooksecurefunc("CompactUnitFrame_UpdateName", function(frame)
 			if VPS.standDown or not frame.vpsStyled or frame:IsForbidden() then return end
 			-- Stock re-shows/re-colours uf.name; re-zero it and refresh the name element colour.
-			VPS.Skin.ReapplyStockTexts(frame)
-			if frame.unit then VPS.Skin.ApplyTexts(frame, frame.unit) end
+			VPS.Guard("ReapplyStockTexts", VPS.Skin.ReapplyStockTexts, frame)
+			if frame.unit then VPS.Guard("ApplyTexts/UpdateName", VPS.Skin.ApplyTexts, frame, frame.unit) end
 		end)
 	end
 end
@@ -281,11 +319,11 @@ end
 
 local function OnPlateRemoved(unit)
 	local uf = UnitFrameForUnit(unit)
-	if uf then VPS.Skin.ClearUnit(uf) end
+	if uf then VPS.Guard("ClearUnit", VPS.Skin.ClearUnit, uf) end
 end
 
 local function OnTargetChanged()
-	ForEachUnitFrame(function(uf, unit) if unit then VPS.Skin.ApplyTarget(uf, unit) end end)
+	ForEachUnitFrame(function(uf, unit) if unit then VPS.Guard("ApplyTarget", VPS.Skin.ApplyTarget, uf, unit) end end)
 end
 
 -- Any unit event that can change a text element's value: level, name, health. healthOnly
@@ -293,7 +331,7 @@ end
 local function OnUnitText(unit, healthOnly)
 	if type(unit) ~= "string" or not unit:find("^nameplate%d") then return end
 	local uf = UnitFrameForUnit(unit)
-	if uf and uf.vpsStyled then VPS.Skin.ApplyTexts(uf, unit, healthOnly) end
+	if uf and uf.vpsStyled then VPS.Guard("ApplyTexts/event", VPS.Skin.ApplyTexts, uf, unit, healthOnly) end
 end
 
 ev:SetScript("OnEvent", function(self, event, arg1)
@@ -341,7 +379,8 @@ function VPS.StatusText()
 	local count = 0
 	ForEachUnitFrame(function() count = count + 1 end)
 	local version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version") or "dev"
-	return string.format("%s | client %s | style %s/%s | %d plate(s) visible | %s%s",
-		tostring(version), tostring(Client.flavour), tostring(VPS.db and VPS.db.barStyle), tostring(VPS.db and VPS.db.barTexture),
-		count, lsm, VPS.standDown and (" | STANDING DOWN for " .. VPS.standDown) or "")
+	local errors = VPS.errorCount > 0 and string.format(" | |cffff4040%d error(s)|r, last: %s", VPS.errorCount, tostring(VPS.lastError)) or " | no errors"
+	return string.format("%s | client %s | texture %s | %d plate(s) visible | %s%s%s",
+		tostring(version), tostring(Client.flavour), tostring(VPS.db and VPS.db.barTexture),
+		count, lsm, errors, VPS.standDown and (" | STANDING DOWN for " .. VPS.standDown) or "")
 end
