@@ -438,6 +438,7 @@ end
 -- bar and vertex-coloured. "red": the 1px outline turns red, no animation.
 --------------------------------------------------------------------------------
 local OVER_LEVEL_RED = { 1, 0.15, 0.1 }
+local OVER_LEVEL_GOLD = { 1, 0.82, 0.2 }
 local GLOW_PAD_X, GLOW_PAD_Y = 1.35, 2.6     -- the proc atlas has transparent margin; overscan so the ring hugs the bar
 
 local function AcquireGlow(uf, hb)
@@ -479,19 +480,37 @@ function Skin.IsOverLevel(unit)
 	return level >= (UnitLevel("player") or 1) + (db().overLevelThreshold or 3)
 end
 
+-- Fallback glow when ActionButtonSpellAlertTemplate is unavailable: a 3px border pulsing in
+-- alpha via an AnimationGroup. Never silently absent.
+local function AcquirePulse(uf, hb)
+	if uf.vpsPulse then return uf.vpsPulse end
+	local edges = AcquireEdges(hb, "vpsPulseEdges", "BACKGROUND", -4)
+	local ag = hb:CreateAnimationGroup()
+	ag:SetLooping("BOUNCE")
+	for _, t in pairs(edges) do
+		local a = ag:CreateAnimation("Alpha"); a:SetTarget(t); a:SetFromAlpha(1); a:SetToAlpha(0.25); a:SetDuration(0.45)
+	end
+	uf.vpsPulse = { edges = edges, anim = ag }
+	return uf.vpsPulse
+end
+
 function Skin.ApplyOverLevel(uf, unit)
 	local hb = Client.HealthBar(uf)
 	if not hb or not uf.vpsOutline then return end
 	local mode = db().overLevelMode or "none"
 	local on = mode ~= "none" and Skin.IsOverLevel(unit)
-	-- static outline recolour
-	if on and mode == "red" then SetEdges(uf.vpsOutline, OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3], 1, true)
+	local isRed = mode == "red" or mode == "animatedRed"
+	-- outline recolour: every red mode turns the 1px outline red so the cue reads even when the
+	-- glow is subtle at bar scale
+	if on and isRed then SetEdges(uf.vpsOutline, OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3], 1, true)
 	else SetEdges(uf.vpsOutline, 0, 0, 0, 1, true) end
+	-- red modes also tint the name element (ApplyTexts has just set the configured colour otherwise)
+	local nameFs = uf.vpsText and uf.vpsText.name
+	if nameFs and on and isRed then nameFs:SetTextColor(OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3]) end
 	-- animated proc glow
 	local wantGlow = on and (mode == "animated" or mode == "animatedRed")
 	local glow = uf.vpsGlow or (wantGlow and AcquireGlow(uf, hb))
-	if not glow then return end
-	if wantGlow then
+	if glow and wantGlow then
 		local r, g, b = GlowColor(mode)
 		glow.ProcStartFlipbook:SetVertexColor(r, g, b)
 		glow.ProcLoopFlipbook:SetVertexColor(r, g, b)
@@ -501,9 +520,25 @@ function Skin.ApplyOverLevel(uf, unit)
 			glow.ProcStartAnim:Stop(); glow.ProcLoop:Stop()
 			glow.ProcLoop:Play()                 -- skip the burst; plates pop in and out constantly
 		end
-	elseif glow:IsShown() then
+	elseif glow and glow:IsShown() then
 		glow.ProcLoop:Stop(); glow.ProcStartAnim:Stop()
 		glow:Hide()
+	end
+	-- fallback pulse when the template is unavailable on this client
+	local wantPulse = wantGlow and not glow
+	local pulse = uf.vpsPulse or (wantPulse and AcquirePulse(uf, hb))
+	if pulse then
+		if wantPulse then
+			local r, g, b
+			if isRed then r, g, b = OVER_LEVEL_RED[1], OVER_LEVEL_RED[2], OVER_LEVEL_RED[3]
+			else r, g, b = OVER_LEVEL_GOLD[1], OVER_LEVEL_GOLD[2], OVER_LEVEL_GOLD[3] end
+			LayoutEdges(pulse.edges, hb, 3, 1 + (db().targetThickness or 2))
+			SetEdges(pulse.edges, r, g, b, 1, true)
+			if not pulse.anim:IsPlaying() then pulse.anim:Play() end
+		else
+			pulse.anim:Stop()
+			SetEdges(pulse.edges, 1, 1, 1, 1, false)
+		end
 	end
 end
 

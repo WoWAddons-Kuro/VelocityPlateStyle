@@ -8,7 +8,7 @@
 local ADDON, VPS = ...
 local Client = VPS.Client
 
-local VPS_DB_VERSION = 2   -- 1 -> 2: barStyle/borderDarken/showLevel dropped; elements list added (spec "Text elements")
+local VPS_DB_VERSION = 3   -- 1 -> 2: barStyle/borderDarken/showLevel dropped; elements list added. 2 -> 3: over-level default red/+2
 
 -- Default VPS_TextElement rows, in stacking order. Copied (deep) into a fresh DB.
 VPS.DEFAULT_ELEMENTS = {
@@ -27,9 +27,9 @@ VPS.DEFAULTS = {
 	backingAlpha = 0.6,           -- alpha of the black backing behind the fill
 	targetColor = { 1, 1, 1, 1 },
 	targetThickness = 2,          -- px, 1..4
-	overLevelMode = "none",       -- VPS_OverLevelMode: none | animated | red | animatedRed  (spell-activation proc glow,
-	                              -- gold or tinted red; "red" alone = static red outline)
-	overLevelThreshold = 3,       -- unitLevel >= playerLevel + N (or skull) lights the over-level highlight
+	overLevelMode = "animatedRed",-- VPS_OverLevelMode: none | animated | red | animatedRed  (spell-activation proc glow,
+	                              -- gold or tinted red; red modes also redden the outline + name; "red" = static)
+	overLevelThreshold = 2,       -- unitLevel >= playerLevel + N (or skull) lights the over-level highlight (Hardcore: +2)
 	nextCustomId = 1,             -- counter for custom element ids "c<n>"
 	-- elements: filled by InitDB from DEFAULT_ELEMENTS (arrays are not merged by CopyDefaults)
 }
@@ -76,6 +76,11 @@ local function InitDB()
 	-- v1 -> v2: the two-style split and the level toggle are gone (spec: Classic Clean retired).
 	if (d.Version or 1) < 2 then
 		d.barStyle, d.borderDarken, d.showLevel = nil, nil, nil
+	end
+	-- v2 -> v3: the over-level highlight shipped defaulting to "none"/3 for a day; this is a
+	-- Hardcore addon, so everyone moves to the red animated glow at +2 (they can turn it off).
+	if (d.Version or 1) < 3 then
+		d.overLevelMode, d.overLevelThreshold = nil, nil
 	end
 	CopyDefaults(d, VPS.DEFAULTS)
 	if type(d.elements) ~= "table" or #d.elements == 0 then
