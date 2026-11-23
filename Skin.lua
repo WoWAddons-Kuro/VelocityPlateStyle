@@ -288,13 +288,15 @@ function Skin.ReapplyName(uf)
 	local hb = Client.HealthBar(uf)
 	if not hb then return end
 	if not IsModern() then return end          -- Classic Clean keeps the stock layout
-	local container = Client.HealthBarContainer(uf) or hb
 	-- Era 1.15.9: the stock name FontString is a RESTRICTED region for addon code; any
 	-- measurement (GetPoint/GetWidth/GetEffectiveScale) raises "Can't measure restricted
 	-- regions". PixelUtil.SetPoint measures internally and therefore silently did nothing.
 	-- Plain SetPoint does not measure and is allowed.
+	-- Anchor to the BAR, not HealthBarsContainer: with Blizzard's "Classic" style selected the
+	-- bar is inset 3.5px left / 20.75px right inside the container (room for the stock level
+	-- badge), so container-centred text sits visibly right of the bar.
 	name:ClearAllPoints()
 	name:SetJustifyH("CENTER")
-	name:SetPoint("BOTTOMLEFT", container, "TOPLEFT", 0, 2)
-	name:SetPoint("BOTTOMRIGHT", container, "TOPRIGHT", 0, 2)
+	name:SetPoint("BOTTOMLEFT", hb, "TOPLEFT", 0, 2)
+	name:SetPoint("BOTTOMRIGHT", hb, "TOPRIGHT", 0, 2)
 end
