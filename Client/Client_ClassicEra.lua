@@ -24,4 +24,9 @@ function impl.StockUsesClassicArt() return Client.SharedStockUsesClassicArt() en
 function impl.DifficultyColor(playerLevel, unitLevel) return Client.SharedDifficultyColor(playerLevel, unitLevel) end
 function impl.PlateOwnerAddons() return Client.SHARED_PLATE_OWNER_ADDONS end
 
+-- Era: one name. The second UnitName return is the realm, which the stock plate never shows for
+-- plates (updateNameUsesGetUnitName with hideRealmName/not-player logic). Keep the first only.
+function impl.UnitDisplayName(unit) return (UnitName(unit)) end
+function impl.UnitShowsFullName(unit) return false end
+
 VPS.ClientFlavours.classic_era = impl

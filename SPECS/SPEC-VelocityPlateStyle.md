@@ -241,7 +241,7 @@ layout that needs widths. Our own strings can be measured freely.
 
 | token | value | Era | Forever |
 |---|---|---|---|
-| `[name]` | `UnitName` | ✓ | secret for hostiles in combat/instances → **element shows the stock name string via `SetText(secret)`** only when the format is exactly `[name]`; in any other format the token expands to `""` |
+| `[name]` | `Client.UnitDisplayName(unit)` — see "Unit names" below | ✓ (`UnitName`, one name) | `"First Surname"` like stock; secret for hostiles in combat/instances → **element shows the first-name secret via `SetText(secret)`** only when the format is exactly `[name]`; in any other format the token expands to `""` |
 | `[level]` | `UnitLevel`, `-1` → `??` | ✓ | ✓ (verify) |
 | `[hp]` | `UnitHealth` abbreviated (`709K`) | ✓ | secret → `""` |
 | `[hp%]` | `floor(hp/hpmax*100).."%"` | ✓ | secret → `""` |
@@ -258,6 +258,57 @@ format box says so.
 **Health updates (Era only).** `UNIT_HEALTH` for `nameplateN` units re-expands only the elements whose format
 contains an `[hp…]` token (`VPS.Format.UsesHealth(format)` cached per element). On Forever `HasSecretValues()`
 skips the registration entirely (R5). No `UNIT_HEALTH_FREQUENT`, no timers (R4).
+
+### Unit names — match the stock plate exactly **[D 2026-11-23]**
+
+Forever characters (players AND mobs) have a first name and a surname; the stock plate shows both. Until this change
+VPS read `UnitName(unit)` and kept only the first return, so every Forever plate showed the first name only.
+Workspace rule (`PROJECT_STRUCTURE.md` "CHARACTERS HAVE TWO NAMES"): `UnitName` is never called at a use site —
+only inside a flavour file. The use sites are `Format.lua` (`[name]` resolver) and `Skin.lua` (bare-`[name]`
+pass-through); both go through one new interface method.
+
+**What the stock plate does** (`_ref\blizzard\forever\nameplates\CompactUnitFrame.lua:843`,
+`Blizzard_NamePlateUnitFrame.lua:630`, `_ref\blizzard\forever\UnitFrame.Mainline.lua:1085`,
+`_ref\blizzard\forever\Camelot_NameUtil.lua`):
+
+```lua
+local showFullName = frame.optionTable.updateNameUsesGetUnitName   -- true for enemy + friendly plate option sets
+                     and not frame.hideRealmName                      -- true only for friendly PLAYERS when
+                                                                       -- CVar nameplateShowFriendlyRealmName is off
+local name = GetUnitName(frame.unit, showFullName)                    -- UnitName -> name, server; Camelot: server = surname
+```
+
+**Interface** (`Client.INTERFACE`, both flavours):
+
+| method | Era (`Client_ClassicEra.lua`) | Forever (`Client_Forever.lua`) |
+|---|---|---|
+| `UnitDisplayName(unit)` → string \| secret \| nil | `(UnitName(unit))` — one name | `first, second = UnitName(unit)`; if `Plain(first)` or `Plain(second)` is nil (secret) → return `first` **unjoined** (display-only pass-through, never compared); else → `GetUnitName(unit, Client.UnitShowsFullName(unit))` — the very function the stock plate calls, so separator / realm-label rules are Blizzard's, not ours |
+| `UnitShowsFullName(unit)` → boolean | `false` | `not (Plain(UnitIsFriend("player", unit)) == true and Plain(UnitIsPlayer(unit)) == true and not GetCVarBool("nameplateShowFriendlyRealmName"))` — mirrors `UpdateNameRealmDisplay`; a secret reaction/player flag counts as "show full" (hostiles are the secret ones and hostiles always show full) |
+
+**Use sites:**
+
+- `Format.lua` `[name]` resolver: `local v = Plain(Client.UnitDisplayName(unit)); return v or ""`.
+- `Skin.lua` bare-`[name]`: `text = Client.UnitDisplayName(unit); if text == nil then text = "" end` — a secret goes
+  straight to `SetText` exactly as today; the only change is that a plain name is now the full name.
+
+**CVar mirror (R1-safe).** We read `nameplateShowFriendlyRealmName`, never write it. When the player toggles it,
+stock runs `CompactUnitFrame_UpdateName` on every plate via its CVar callback; our existing `hooksecurefunc` on that
+function (`Core.lua:301`) already re-runs `ApplyTexts`, so no new event registration is needed.
+
+**Non-goals.** No `[firstname]` / `[surname]` tokens, no option to hide surnames: the plate shows what Blizzard
+shows, per owner. Era behaviour is unchanged.
+
+**Verification (Forever, owner):**
+
+- [ ] `/dump UnitName("target")` on a mob → two returns `"First", "Surname"` (records the Camelot shape here: ________)
+- [ ] `/dump GetUnitName("target", true)` → the string the stock plate shows (separator seen: ________)
+- [ ] Mob plate with VPS on shows the same string as with VPS off (`/vps` → disable via stand-down or `/reload` without the addon)
+- [ ] Friendly player plate in bar mode: surname follows `nameplateShowFriendlyRealmName`; toggling the CVar updates
+      live without `/reload`
+- [ ] Hostile in an instance / in combat (secret name): plate still shows a name, no Lua errors (`/vps status` error count 0)
+- [ ] Era: unchanged (`Kuro`, one name)
+
+Milestone: part of **M4 — Forever verification pass**.
 
 **Colour modes.** `stock` = copy the stock region's current vertex colour at each update (name: reaction/tap colour
 from the alpha-zeroed `uf.name`; health: white). `difficulty` = `Client.DifficultyColor(playerLevel, unitLevel)` —

@@ -34,4 +34,39 @@ function impl.StockUsesClassicArt() return Client.SharedStockUsesClassicArt() en
 function impl.DifficultyColor(playerLevel, unitLevel) return Client.SharedDifficultyColor(playerLevel, unitLevel) end
 function impl.PlateOwnerAddons() return Client.SHARED_PLATE_OWNER_ADDONS end
 
+-- Names. Forever characters (players AND mobs) have a first name and a surname; UnitName(unit)
+-- returns them as two values (the surname rides in the old "server" slot; Camelot NameUtil.lua
+-- confirms: `local name, surname = UnitName(unit)`). The stock plate displays
+--   GetUnitName(unit, updateNameUsesGetUnitName and not hideRealmName)      (CompactUnitFrame.lua:843)
+-- where hideRealmName is true only for a friendly PLAYER while the CVar
+-- nameplateShowFriendlyRealmName is off (NamePlateUnitFrameMixin:UpdateNameRealmDisplay).
+-- We call the same GetUnitName so the join is Blizzard's, not ours.
+local SHOW_FRIENDLY_REALM_NAME_CVAR = "nameplateShowFriendlyRealmName"
+
+function impl.UnitShowsFullName(unit)
+	local Plain = VPS.Plain
+	local isFriend = Plain(UnitIsFriend("player", unit))
+	local isPlayer = Plain(UnitIsPlayer(unit))
+	-- A secret flag (hostile in restricted content) can only belong to a unit that shows the full
+	-- name anyway, so "unknown" resolves to true.
+	if isFriend == true and isPlayer == true then
+		return GetCVarBool(SHOW_FRIENDLY_REALM_NAME_CVAR) == true
+	end
+	return true
+end
+
+function impl.UnitDisplayName(unit)
+	local Plain = VPS.Plain
+	local first, second = UnitName(unit)
+	if first == nil then return nil end
+	-- Either half secret: GetUnitName would concatenate a secret and raise. Hand back the raw first
+	-- return for a display-only SetText (BUG 12 pattern 1); the caller never compares it.
+	if Plain(first) == nil or (second ~= nil and Plain(second) == nil) then return first end
+	if type(GetUnitName) == "function" then
+		return GetUnitName(unit, impl.UnitShowsFullName(unit))
+	end
+	if second and second ~= "" and impl.UnitShowsFullName(unit) then return first .. " " .. second end
+	return first
+end
+
 VPS.ClientFlavours.forever = impl

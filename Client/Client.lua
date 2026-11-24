@@ -40,6 +40,15 @@ Client.INTERFACE = {
 	"StockUsesClassicArt",  -- () -> boolean     true while Blizzard's own "Classic" nameplate style is selected
 	"DifficultyColor",      -- (playerLevel, unitLevel) -> r, g, b
 	"PlateOwnerAddons",     -- () -> { addonName, ... }  plate-replacement addons that trigger the R7 stand-down
+	-- Unit names (spec "Unit names - match the stock plate exactly") ----------------------
+	-- UnitName is NEVER called outside the flavour files (PROJECT_STRUCTURE.md two-name rule).
+	"UnitDisplayName",      -- (unit) -> string|secret|nil  the string the STOCK plate would show for this unit:
+	                        --   Era one name; Forever "First Surname" via GetUnitName(unit, UnitShowsFullName(unit)).
+	                        --   When any part is secret (BUG 12) the raw first return is handed back UNJOINED so the
+	                        --   caller can still SetText() it; never compare or concatenate the result.
+	"UnitShowsFullName",    -- (unit) -> boolean  Forever: false only for friendly PLAYERS while CVar
+	                        --   nameplateShowFriendlyRealmName is off (NamePlateUnitFrameMixin:UpdateNameRealmDisplay);
+	                        --   read-only mirror (R1). Era: false (there is no second name).
 }
 
 --------------------------------------------------------------------------------

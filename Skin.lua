@@ -306,7 +306,8 @@ function Skin.ApplyTexts(uf, unit, healthOnly)
 				local text
 				if Format.IsBareName(e.format) then
 					-- Display-only pass-through: a secret name may go straight to SetText (BUG 12 pattern 1).
-					text = UnitName(unit)
+					-- Flavour-owned: Forever returns "First Surname" like the stock plate (spec "Unit names").
+					text = Client.UnitDisplayName(unit)
 					if text == nil then text = "" end
 				else
 					text = Format.ExpandOrEmpty(e.format, unit)

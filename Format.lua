@@ -30,7 +30,8 @@ local CLASSIFICATION_SUFFIX = { elite = "+", rare = "r", rareelite = "r+", world
 -- Per-token resolvers: (unit) -> string. Always return a string ("" when unavailable).
 local resolvers = {
 	["[name]"] = function(unit)
-		local v = Plain(UnitName(unit))
+		-- Flavour-owned (Era one name; Forever "First Surname" like the stock plate). Secret -> "".
+		local v = Plain(VPS.Client.UnitDisplayName(unit))
 		return v or ""
 	end,
 	["[level]"] = function(unit)
