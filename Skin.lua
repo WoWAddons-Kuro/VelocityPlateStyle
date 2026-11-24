@@ -508,6 +508,7 @@ local GLOW_TILE_PX = 96                              -- on-screen px per repeat 
 local GLOW_SWEEP_SEC = 1.0                           -- one wave-length of travel per cycle
 local GLOW_ALPHA = 1.0                               -- the gradient carries its own alpha (0.5 peak); no extra fade
 local GLOW_PAD = 0                                   -- stays inside the 1px outline
+local GLOW_DIM_ALPHA = 0.5                           -- black dimmer over the bar while the sweep runs: the fill reads 50% darker
 
 local function AcquireGlow(uf, hb)
 	if uf.vpsGlow then return uf.vpsGlow end
@@ -526,7 +527,14 @@ local function AcquireGlow(uf, hb)
 		return nil
 	end
 	tex:SetAlpha(GLOW_ALPHA)
-	uf.vpsGlow = { tex = tex, scrollGroup = tex.Sweep }
+	-- Dimmer: a black layer over the whole fill, one sublevel UNDER the sweep on the same frame,
+	-- so the bar's own colour reads GLOW_DIM_ALPHA darker while the sweep runs and the yellow wave
+	-- stands out against it. Blizzard's fill colour is never written (R5).
+	local dim = uf.vpsTop:CreateTexture(nil, "ARTWORK", nil, -1)
+	dim:SetTexture(WHITE8)
+	dim:SetVertexColor(0, 0, 0, GLOW_DIM_ALPHA)
+	dim:Hide()
+	uf.vpsGlow = { tex = tex, dim = dim, scrollGroup = tex.Sweep }
 	return uf.vpsGlow
 end
 
@@ -536,6 +544,8 @@ local function LayoutGlow(glow, hb)
 	glow.tex:ClearAllPoints()
 	PixelUtil.SetPoint(glow.tex, "TOPLEFT", hb, "TOPLEFT", -GLOW_PAD, GLOW_PAD)
 	PixelUtil.SetPoint(glow.tex, "BOTTOMRIGHT", hb, "BOTTOMRIGHT", GLOW_PAD, -GLOW_PAD)
+	glow.dim:ClearAllPoints()
+	glow.dim:SetAllPoints(hb)
 	-- Tile perl.tga at its native 64px period so the streaks keep their shape on any bar width.
 	local repeats = math.max(1, w / GLOW_TILE_PX)
 	glow.tex:SetTexCoord(0, repeats, 0, 1)
@@ -582,11 +592,13 @@ function Skin.ApplyOverLevel(uf, unit)
 	if wantGlow then
 		glow.tex:SetVertexColor(GlowColor(mode, hb))
 		LayoutGlow(glow, hb)
+		glow.dim:Show()
 		glow.tex:Show()
 		if not glow.scrollGroup:IsPlaying() then glow.scrollGroup:Play() end
 	elseif glow.tex:IsShown() then
 		glow.scrollGroup:Stop()
 		glow.tex:Hide()
+		glow.dim:Hide()
 	end
 end
 
