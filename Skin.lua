@@ -255,7 +255,7 @@ local function ColorFor(uf, e, unit, level)
 		local c = e.customColor; return c[1] or 1, c[2] or 1, c[3] or 1
 	elseif mode == "difficulty" then
 		if level == nil then return 1, 1, 1 end
-		if level < 0 then return SKULL_COLOR[1], SKULL_COLOR[2], SKULL_COLOR[3] end
+		if VPS.IsSkullLevel(level) then return SKULL_COLOR[1], SKULL_COLOR[2], SKULL_COLOR[3] end
 		if Plain(UnitCanAttack("player", unit)) == false then return 0.8, 0.8, 0.8 end
 		-- At the user's over-level threshold the number goes skull-red too (owner 2026-11-24).
 		if Skin.IsOverLevel(unit) then return SKULL_COLOR[1], SKULL_COLOR[2], SKULL_COLOR[3] end

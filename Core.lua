@@ -32,6 +32,8 @@ VPS.DEFAULTS = {
 	overLevelMode = "animatedRed",-- VPS_OverLevelMode: none | animated | red | animatedRed  (spell-activation proc glow,
 	                              -- gold or tinted red; red modes also redden the outline + name; "red" = static)
 	overLevelThreshold = 2,       -- unitLevel >= playerLevel + N (or skull) lights the over-level highlight (Hardcore: +2)
+	skullAtLevelsAbove = 10,      -- show the skull (??) instead of the number at unitLevel >= playerLevel + N;
+	                              -- 10 = where the game does it itself (reports -1). A real -1 is always a skull.
 	nextCustomId = 1,             -- counter for custom element ids "c<n>"
 	-- elements: filled by InitDB from DEFAULT_ELEMENTS (arrays are not merged by CopyDefaults)
 }
@@ -94,6 +96,17 @@ local issecretvalue = issecretvalue or function() return false end
 function VPS.Plain(v)
 	if v == nil or issecretvalue(v) then return nil end
 	return v
+end
+
+-- Skull rule. The game itself reports level -1 (its "??") only when the mob is ~10 levels up;
+-- db.skullAtLevelsAbove lets the player lower that (Hardcore: +3). Drives the [level] token and
+-- the level colour. `level` must already be Plain()-ed; nil -> false. A real -1 is always a skull.
+VPS.SKULL_GAME_LEVELS = 10
+function VPS.IsSkullLevel(level)
+	if level == nil then return false end
+	if level < 0 then return true end
+	local at = VPS.db and VPS.db.skullAtLevelsAbove or VPS.SKULL_GAME_LEVELS
+	return level >= (UnitLevel("player") or 1) + at
 end
 
 --------------------------------------------------------------------------------

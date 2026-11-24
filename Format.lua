@@ -14,6 +14,9 @@ VPS.Format = Format
 
 Format.TOKENS = { "[name]", "[level]", "[hp]", "[hp%]", "[hpmax]", "[class]", "[class+]", "[creature]" }
 Format.SKULL_TEXT = "??"
+-- Inline skull glyph (|T..|t escape; :0 = font height). Shown NEXT TO the number when the mob is
+-- >= player + db.skullAtLevelsAbove; the game's own -1 still reads "??".
+Format.SKULL_ICON = "|TInterface\\TargetingFrame\\UI-TargetingFrame-Skull:0|t"
 
 -- 709000 -> "709K", 1234567 -> "1.2M", 999 -> "999"
 local function Abbreviate(n)
@@ -38,6 +41,7 @@ local resolvers = {
 		local v = Plain(UnitLevel(unit))
 		if v == nil then return "" end
 		if v < 0 then return Format.SKULL_TEXT end
+		if VPS.IsSkullLevel(v) then return Format.SKULL_ICON .. tostring(v) end
 		return tostring(v)
 	end,
 	["[hp]"] = function(unit)
