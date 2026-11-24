@@ -15,6 +15,7 @@ Client\Client_Forever.lua
 Client\Client_Select.lua
 Templates.xml
 Core.lua
+LayoutProfile.lua
 Textures.lua
 Format.lua
 Skin.lua

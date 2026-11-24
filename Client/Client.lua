@@ -40,6 +40,8 @@ Client.INTERFACE = {
 	"StockUsesClassicArt",  -- () -> boolean     true while Blizzard's own "Classic" nameplate style is selected
 	"DifficultyColor",      -- (playerLevel, unitLevel) -> r, g, b
 	"PlateOwnerAddons",     -- () -> { addonName, ... }  plate-replacement addons that trigger the R7 stand-down
+	"PlayerKey",            -- () -> VPS_PlayerKey (UnitGUID("player")) - the ONLY per-character key (PROJECT_STRUCTURE.md:
+	                        --   Forever characters have two names; never key on UnitName). Used by the "character" danger scope.
 	-- Unit names (spec "Unit names - match the stock plate exactly") ----------------------
 	-- UnitName is NEVER called outside the flavour files (PROJECT_STRUCTURE.md two-name rule).
 	"UnitDisplayName",      -- (unit) -> string|secret|nil  the string the STOCK plate would show for this unit:

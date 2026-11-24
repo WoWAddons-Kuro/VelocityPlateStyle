@@ -23,6 +23,7 @@ function impl.StockHealthValueText(uf) return nil end
 function impl.StockUsesClassicArt() return Client.SharedStockUsesClassicArt() end
 function impl.DifficultyColor(playerLevel, unitLevel) return Client.SharedDifficultyColor(playerLevel, unitLevel) end
 function impl.PlateOwnerAddons() return Client.SHARED_PLATE_OWNER_ADDONS end
+function impl.PlayerKey() return UnitGUID("player") end
 
 -- Era: one name. The second UnitName return is the realm, which the stock plate never shows for
 -- plates (updateNameUsesGetUnitName with hideRealmName/not-player logic). Keep the first only.

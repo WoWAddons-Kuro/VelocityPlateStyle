@@ -95,8 +95,10 @@ local function CreateOptions()
 	local function Place(w, dy, dx) w:SetPoint("TOPLEFT", last, "BOTTOMLEFT", dx or 0, dy or lastDy); last = w; lastDy = -6 end
 
 	-- Slider with its label above-left. `scale` maps db value <-> slider value (100 for 0..1 alphas).
-	local function Slider(parent, name, key, minV, maxV, step, labelFn, scale)
+	-- `tbl` () -> the table holding `key`; default the account-wide db, VPS.Danger for the danger record.
+	local function Slider(parent, name, key, minV, maxV, step, labelFn, scale, tbl)
 		scale = scale or 1
+		tbl = tbl or db
 		local holder = CreateFrame("Frame", nil, parent); holder:SetSize(BOX_W - 2 * PAD, 44)
 		local label = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight"); label:SetPoint("TOPLEFT", 4, 0)
 		local s = CreateFrame("Slider", name, holder, "OptionsSliderTemplate")
@@ -108,32 +110,33 @@ local function CreateOptions()
 			v = math.floor(v / step + 0.5) * step
 			label:SetText(labelFn(v / scale))
 			if updating then return end
-			if db()[key] ~= v / scale then db()[key] = v / scale; Changed() end
+			if tbl()[key] ~= v / scale then tbl()[key] = v / scale; Changed() end
 		end)
 		holder.Update = function()
 			updating = true
-			s:SetValue((db()[key] or 0) * scale); label:SetText(labelFn(db()[key] or 0))
+			s:SetValue((tbl()[key] or 0) * scale); label:SetText(labelFn(tbl()[key] or 0))
 			updating = false
 		end
 		return Track(holder)
 	end
 
 	-- Labelled dropdown bound to db[key]; `items()` returns { { key=, name= }, ... }.
-	local function Dropdown(parent, name, key, label, items, width)
+	local function Dropdown(parent, name, key, label, items, width, tbl)
+		tbl = tbl or db
 		local holder = CreateFrame("Frame", nil, parent); holder:SetSize(BOX_W - 2 * PAD, 48)
 		local lbl = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight"); lbl:SetPoint("TOPLEFT", 4, 0); lbl:SetText(label)
 		local dd = CreateFrame("Frame", name, holder, "UIDropDownMenuTemplate")
 		dd:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", -16, -4)
 		UIDropDownMenu_SetWidth(dd, width or 220)
 		local function CurrentName()
-			for _, it in ipairs(items()) do if it.key == db()[key] then return it.name end end
-			return tostring(db()[key])
+			for _, it in ipairs(items()) do if it.key == tbl()[key] then return it.name end end
+			return tostring(tbl()[key])
 		end
 		local function Init(self, level)
 			for _, it in ipairs(items()) do
 				local info = UIDropDownMenu_CreateInfo()
-				info.text = it.name; info.checked = (it.key == db()[key])
-				info.func = function() db()[key] = it.key; UIDropDownMenu_SetText(dd, it.name); Changed() end
+				info.text = it.name; info.checked = (it.key == tbl()[key])
+				info.func = function() tbl()[key] = it.key; UIDropDownMenu_SetText(dd, it.name); Changed() end
 				UIDropDownMenu_AddButton(info, level)
 			end
 		end
@@ -196,22 +199,52 @@ local function CreateOptions()
 		function(v) return string.format("Backing darkness: %d%%", math.floor(v * 100 + 0.5)) end, 100), 44, -4)
 	st:Finish()
 
-	-- Section: Target Highlight --------------------------------------------------------
-	local tg = Section("Target Highlight")
+	-- Section: Selected Target Highlight (the selection border only) ---------------------
+	local tg = Section("Selected Target Highlight")
 	tg:Add(ColorRow(tg, "targetColor", "Target border colour", true), 24, -6)
 	tg:Add(Slider(tg, "VelocityPlateStyleTargetThickness", "targetThickness", 1, 4, 1, function(v) return "Target border thickness: " .. v .. " px" end), 44, -6)
+	tg:Finish()
+
+	-- Section: Danger Highlight (the over-level cues) ------------------------------------
+	-- Settings bound to VPS.Danger(): the record db.dangerScope points at (spec "Danger Highlight scope").
+	local dg = Section("Danger Highlight")
+	local Danger = VPS.Danger
+	-- Scope radios. The switch itself is account-wide; a bucket is seeded from the global record on
+	-- first use, so picking a scope changes nothing visible until the player edits.
+	local SCOPE_LABEL = { global = "To all characters", layout = "Per Edit Mode layout", character = "To this character only" }
+	local scopeRow = CreateFrame("Frame", nil, dg); scopeRow:SetSize(BOX_W - 2 * PAD, 40)
+	local scopeLbl = scopeRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight"); scopeLbl:SetPoint("TOPLEFT", 4, 0); scopeLbl:SetText("Danger highlight settings apply:")
+	local radios = {}
+	local prevRadio
+	for i, scope in ipairs(VPS.DANGER_SCOPES) do
+		local r = CreateFrame("CheckButton", "VelocityPlateStyleDangerScope" .. i, scopeRow, "UIRadioButtonTemplate")
+		if prevRadio then r:SetPoint("LEFT", prevRadio.text, "RIGHT", 16, 0) else r:SetPoint("TOPLEFT", scopeLbl, "BOTTOMLEFT", 0, -4) end
+		r.text = _G[r:GetName() .. "Text"]; r.text:SetText(SCOPE_LABEL[scope]); r.text:SetFontObject("GameFontHighlightSmall")
+		r:SetScript("OnClick", function()
+			db().dangerScope = scope
+			Changed(); optionsFrame:Update()
+		end)
+		radios[scope] = r; prevRadio = r
+	end
+	local scopeNote = scopeRow:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall"); scopeNote:SetPoint("TOPLEFT", scopeLbl, "BOTTOMLEFT", 0, -22); scopeNote:SetJustifyH("LEFT"); scopeNote:SetWidth(BOX_W - 2 * PAD)
+	scopeRow.Update = function()
+		for scope, r in pairs(radios) do r:SetChecked(db().dangerScope == scope) end
+		scopeNote:SetText("Editing: " .. VPS.DangerScopeText())
+	end
+	Track(scopeRow)
+	dg:Add(scopeRow, 52, -6)
 	local OVER_LEVEL_LABEL = { none = "None", animated = "Pulsing glow (gold)", red = "Red outline", animatedRed = "Pulsing glow (red)" }
-	tg:Add(Dropdown(tg, "VelocityPlateStyleOverLevelDropdown", "overLevelMode", "Over-leveled highlight", function()
+	dg:Add(Dropdown(dg, "VelocityPlateStyleOverLevelDropdown", "overLevelMode", "Over-leveled highlight", function()
 		local out = {}
 		for _, m in ipairs(VPS.OVER_LEVEL_MODES) do out[#out + 1] = { key = m, name = OVER_LEVEL_LABEL[m] } end
 		return out
-	end), 48, -6)
-	tg:Add(Slider(tg, "VelocityPlateStyleOverLevelThreshold", "overLevelThreshold", 1, 10, 1,
-		function(v) return string.format("Over-leveled when the mob is %d+ levels above you (skull always counts)", v) end), 44, -4)
+	end, nil, Danger), 48, -6)
+	dg:Add(Slider(dg, "VelocityPlateStyleOverLevelThreshold", "overLevelThreshold", 1, 10, 1,
+		function(v) return string.format("Over-leveled when the mob is %d+ levels above you (skull always counts)", v) end, nil, Danger), 44, -4)
 	-- The game only shows its skull (-1) about 10 levels up; Hardcore players want it sooner.
-	tg:Add(Slider(tg, "VelocityPlateStyleSkullAt", "skullAtLevelsAbove", 1, VPS.SKULL_GAME_LEVELS, 1,
-		function(v) return string.format("Show skulls when the enemy is +%d levels above you (one per level; %d = the game's own rule)", v, VPS.SKULL_GAME_LEVELS) end), 44, -4)
-	tg:Finish()
+	dg:Add(Slider(dg, "VelocityPlateStyleSkullAt", "skullAtLevelsAbove", 1, VPS.SKULL_GAME_LEVELS, 1,
+		function(v) return string.format("Show skulls when the enemy is +%d levels above you (one per level; %d = the game's own rule)", v, VPS.SKULL_GAME_LEVELS) end, nil, Danger), 44, -4)
+	dg:Finish()
 
 	-- Section: Text (the element grid) -------------------------------------------------
 	local tx = Section("Text")
@@ -493,8 +526,8 @@ SlashCmdList.VELOCITYPLATESTYLE = function(msg)
 				fs and (fs:GetText() or "") or "-", fs and tostring(fs.vpsWidth) or "-"))
 		end
 		local glow = uf.vpsGlow
-		VPS.Print(string.format("overlevel: mode=%s threshold=%s unitLevel=%s playerLevel=%s verdict=%s glow=%s shown=%s sweeping=%s",
-			tostring(VPS.db.overLevelMode), tostring(VPS.db.overLevelThreshold), tostring(UnitLevel("target")), tostring(UnitLevel("player")),
+		VPS.Print(string.format("overlevel (%s): mode=%s threshold=%s skullAt=%s unitLevel=%s playerLevel=%s verdict=%s glow=%s shown=%s sweeping=%s",
+			VPS.DangerScopeText(), tostring(VPS.Danger().overLevelMode), tostring(VPS.Danger().overLevelThreshold), tostring(VPS.Danger().skullAtLevelsAbove), tostring(UnitLevel("target")), tostring(UnitLevel("player")),
 			tostring(VPS.Skin.IsOverLevel("target")), glow and "created" or "nil", glow and tostring(glow.tex:IsShown()) or "-",
 			glow and tostring(glow.scrollGroup:IsPlaying()) or "-"))
 		VPS.Print("stock: useClassicHealthBar=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.useClassicHealthBar) .. " nameAnchorStyle=" .. tostring(NamePlateSetupOptions and NamePlateSetupOptions.unitNameAnchorStyle))

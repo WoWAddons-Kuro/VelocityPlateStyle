@@ -573,13 +573,13 @@ function Skin.IsOverLevel(unit)
 	local level = Plain(UnitLevel(unit))
 	if level == nil then return false end
 	if level < 0 then return true end
-	return level >= (UnitLevel("player") or 1) + (db().overLevelThreshold or 3)
+	return level >= (UnitLevel("player") or 1) + (VPS.Danger().overLevelThreshold or 3)
 end
 
 function Skin.ApplyOverLevel(uf, unit)
 	local hb = Client.HealthBar(uf)
 	if not hb or not uf.vpsOutline then return end
-	local mode = db().overLevelMode or "none"
+	local mode = VPS.Danger().overLevelMode or "none"
 	local on = mode ~= "none" and Skin.IsOverLevel(unit)
 	local isRed = mode == "red" or mode == "animatedRed"
 	-- every red mode turns the 1px outline red so the cue reads at any bar size

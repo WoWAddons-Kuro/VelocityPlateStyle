@@ -8,7 +8,7 @@
 local ADDON, VPS = ...
 local Client = VPS.Client
 
-local VPS_DB_VERSION = 4   -- 1->2 elements list; 2->3 over-level default red/+2; 3->4 default layout = owner's favourite
+local VPS_DB_VERSION = 5   -- 1->2 elements list; 2->3 over-level default red/+2; 3->4 default layout = owner's favourite; 4->5 danger record + scope
 
 -- Default VPS_TextElement rows, in stacking order. Copied (deep) into a fresh DB.
 -- The owner's favourite layout (2026-11-23): name inside-left, current health inside-right,
@@ -22,6 +22,15 @@ VPS.DEFAULT_ELEMENTS = {
 VPS.BUILTIN_ELEMENT_IDS = { name = true, level = true, health = true, healthpct = true }
 
 -- Account-wide defaults. Keys are documented in the spec's "Saved variables" section.
+-- VPS_DangerSettings: the over-level cues. Lives in db.danger (global) or, per db.dangerScope, in a
+-- per-Edit-Mode-layout / per-character bucket (spec "Danger Highlight scope"). Read via VPS.Danger().
+VPS.DANGER_DEFAULTS = {
+	overLevelMode = "animatedRed",-- VPS_OverLevelMode: none | animated | red | animatedRed  (spell-activation proc glow,
+	                              -- gold or tinted red; red modes also redden the outline + name; "red" = static)
+	overLevelThreshold = 2,       -- unitLevel >= playerLevel + N (or skull) lights the over-level highlight (Hardcore: +2)
+	skullAtLevelsAbove = 10,      -- one skull per level above you next to the number from unitLevel >= playerLevel + N;
+	                              -- 10 = where the game does it itself (reports -1). A real -1 is always "??".
+}
 VPS.DEFAULTS = {
 	Version = VPS_DB_VERSION,
 	barTexture = "VPS:Flat",      -- key into VPS.Textures (Textures.lua)
@@ -29,11 +38,10 @@ VPS.DEFAULTS = {
 	backingAlpha = 0.6,           -- alpha of the black backing behind the fill
 	targetColor = { 1, 1, 1, 1 },
 	targetThickness = 2,          -- px, 1..4
-	overLevelMode = "animatedRed",-- VPS_OverLevelMode: none | animated | red | animatedRed  (spell-activation proc glow,
-	                              -- gold or tinted red; red modes also redden the outline + name; "red" = static)
-	overLevelThreshold = 2,       -- unitLevel >= playerLevel + N (or skull) lights the over-level highlight (Hardcore: +2)
-	skullAtLevelsAbove = 10,      -- show the skull (??) instead of the number at unitLevel >= playerLevel + N;
-	                              -- 10 = where the game does it itself (reports -1). A real -1 is always a skull.
+	dangerScope = "global",       -- VPS_DangerScope: global | layout | character  (always account-wide: it says where to look)
+	danger = VPS.DANGER_DEFAULTS, -- the global VPS_DangerSettings (CopyDefaults deep-copies)
+	dangerByLayout = {},          -- VPS_LayoutName (Edit Mode layout) -> VPS_DangerSettings
+	dangerByChar = {},            -- VPS_PlayerKey (UnitGUID) -> VPS_DangerSettings
 	nextCustomId = 1,             -- counter for custom element ids "c<n>"
 	-- elements: filled by InitDB from DEFAULT_ELEMENTS (arrays are not merged by CopyDefaults)
 }
@@ -45,6 +53,7 @@ VPS.ALIGNS_V = { "top", "middle", "bottom" }         -- for left / right side co
 VPS.COLOR_MODES = { "stock", "white", "difficulty", "class", "custom" }
 VPS.SIZE_MIN, VPS.SIZE_MAX = 6, 20
 VPS.OVER_LEVEL_MODES = { "none", "animated", "red", "animatedRed" }
+VPS.DANGER_SCOPES = { "global", "layout", "character" }
 
 VPS.styleVersion = 1          -- bumped on every settings change; uf.vpsStyled ~= styleVersion => restyle
 VPS.standDown = nil           -- name of the plate-replacement addon that made us stand down, or nil
@@ -117,7 +126,7 @@ function VPS.SkullCount(level, unit)
 	if unit and not VPS.IsHostileThreat(unit) then return 0 end
 	local diff = level - (UnitLevel("player") or 1)
 	if diff > VPS.SKULL_GAME_LEVELS then return -1 end
-	local at = VPS.db and VPS.db.skullAtLevelsAbove or VPS.SKULL_GAME_LEVELS
+	local at = VPS.db and VPS.Danger().skullAtLevelsAbove or VPS.SKULL_GAME_LEVELS
 	if diff < at then return 0 end
 	return diff
 end
@@ -125,6 +134,36 @@ end
 -- True when the level should read in skull red (any skull form).
 function VPS.IsSkullLevel(level, unit)
 	return VPS.SkullCount(level, unit) ~= 0
+end
+
+--------------------------------------------------------------------------------
+-- Danger settings scope (spec "Danger Highlight scope"). db.dangerScope says which
+-- VPS_DangerSettings record is live: the global one, the active Edit Mode layout's, or this
+-- character's (UnitGUID). A bucket that does not exist yet is seeded from the GLOBAL record, so
+-- flipping the switch changes nothing visible until the player edits. Options writes into the
+-- returned table directly.
+--------------------------------------------------------------------------------
+local function DangerBucket(t, key)
+	if not key then return VPS.db.danger end                -- key unknown (pre-login GUID): fall back, never create junk
+	local rec = t[key]
+	if not rec then rec = CopyTable(VPS.db.danger); t[key] = rec end
+	return rec
+end
+
+function VPS.Danger()
+	local d = VPS.db
+	local scope = d.dangerScope
+	if scope == "character" then return DangerBucket(d.dangerByChar, Client.PlayerKey())
+	elseif scope == "layout" then return VPS.LayoutProfile.Current()      -- seeded by LayoutProfile (copy of previous layout, else global)
+	else return d.danger end
+end
+
+-- Where the live record comes from, for /vps status and the options page.
+function VPS.DangerScopeText()
+	local scope = VPS.db.dangerScope
+	if scope == "character" then return "this character"
+	elseif scope == "layout" then return "Edit Mode " .. VPS.LayoutProfile.Status()
+	else return "all characters" end
 end
 
 --------------------------------------------------------------------------------
@@ -153,7 +192,17 @@ local function InitDB()
 	if (d.Version or 1) < 3 then
 		d.overLevelMode, d.overLevelThreshold = nil, nil
 	end
+	-- v4 -> v5: the three danger keys move into the db.danger record (spec "Danger Highlight scope").
+	if (d.Version or 1) < 5 and (d.overLevelMode ~= nil or d.overLevelThreshold ~= nil or d.skullAtLevelsAbove ~= nil) then
+		d.danger = type(d.danger) == "table" and d.danger or {}
+		if d.overLevelMode ~= nil then d.danger.overLevelMode = d.overLevelMode end
+		if d.overLevelThreshold ~= nil then d.danger.overLevelThreshold = d.overLevelThreshold end
+		if d.skullAtLevelsAbove ~= nil then d.danger.skullAtLevelsAbove = d.skullAtLevelsAbove end
+	end
+	d.overLevelMode, d.overLevelThreshold, d.skullAtLevelsAbove = nil, nil, nil
 	CopyDefaults(d, VPS.DEFAULTS)
+	-- Every bucket gets any key a newer default introduced.
+	for _, t in ipairs({ d.dangerByLayout, d.dangerByChar }) do for _, rec in pairs(t) do CopyDefaults(rec, VPS.DANGER_DEFAULTS) end end
 	if type(d.elements) ~= "table" or #d.elements == 0 then
 		d.elements = {}
 		for _, e in ipairs(VPS.DEFAULT_ELEMENTS) do d.elements[#d.elements + 1] = CopyTable(e) end
@@ -379,6 +428,10 @@ ev:SetScript("OnEvent", function(self, event, arg1)
 			return
 		end
 		InstallGlobalHooks()
+		-- Edit Mode layout tracking for the "layout" danger scope. The real name arrives a moment after
+		-- login (and on every dropdown switch); plates re-read the right bucket when it does.
+		VPS.LayoutProfile.Init(VPS.db.dangerByLayout, function() return VPS.db.danger end)
+		VPS.LayoutProfile.OnChanged(function() if VPS.db.dangerScope == "layout" then VPS.RestyleAll() end end)
 		self:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 		self:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
 		self:RegisterEvent("PLAYER_TARGET_CHANGED")
@@ -413,7 +466,7 @@ function VPS.StatusText()
 	ForEachUnitFrame(function() count = count + 1 end)
 	local version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version") or "dev"
 	local errors = VPS.errorCount > 0 and string.format(" | |cffff4040%d error(s)|r, last: %s", VPS.errorCount, tostring(VPS.lastError)) or " | no errors"
-	return string.format("%s | client %s | texture %s | %d plate(s) visible | %s%s%s",
+	return string.format("%s | client %s | texture %s | %d plate(s) visible | danger: %s | %s%s%s",
 		tostring(version), tostring(Client.flavour), tostring(VPS.db and VPS.db.barTexture),
-		count, lsm, errors, VPS.standDown and (" | STANDING DOWN for " .. VPS.standDown) or "")
+		count, VPS.db and VPS.DangerScopeText() or "?", lsm, errors, VPS.standDown and (" | STANDING DOWN for " .. VPS.standDown) or "")
 end

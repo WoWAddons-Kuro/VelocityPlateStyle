@@ -33,6 +33,7 @@ function impl.StockHealthValueText(uf) local hb = Client.HealthBar(uf); return h
 function impl.StockUsesClassicArt() return Client.SharedStockUsesClassicArt() end
 function impl.DifficultyColor(playerLevel, unitLevel) return Client.SharedDifficultyColor(playerLevel, unitLevel) end
 function impl.PlateOwnerAddons() return Client.SHARED_PLATE_OWNER_ADDONS end
+function impl.PlayerKey() return UnitGUID("player") end
 
 -- Names. Forever characters (players AND mobs) have a first name and a surname; UnitName(unit)
 -- returns them as two values (the surname rides in the old "server" slot; Camelot NameUtil.lua
