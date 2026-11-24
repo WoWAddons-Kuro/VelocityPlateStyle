@@ -98,15 +98,33 @@ function VPS.Plain(v)
 	return v
 end
 
--- Skull rule. The game itself reports level -1 (its "??") only when the mob is ~10 levels up;
--- db.skullAtLevelsAbove lets the player lower that (Hardcore: +3). Drives the [level] token and
--- the level colour. `level` must already be Plain()-ed; nil -> false. A real -1 is always a skull.
+-- Skull rule (owner 2026-11-24). db.skullAtLevelsAbove is the gap at which skulls appear next to
+-- the level: a mob `diff` levels above you shows `diff` skulls + the number, up to SKULL_GAME_LEVELS
+-- (10); beyond that, and for the game's own -1, it is the plain "??" skull. Hardcore: set 3.
+-- `level` must already be Plain()-ed.
 VPS.SKULL_GAME_LEVELS = 10
-function VPS.IsSkullLevel(level)
-	if level == nil then return false end
-	if level < 0 then return true end
+
+-- Over-level cues (skulls, red level, sweep) are for things that can hurt you. A friendly or
+-- otherwise non-attackable unit never gets them; a secret flag (Forever) counts as attackable.
+function VPS.IsHostileThreat(unit)
+	return VPS.Plain(UnitCanAttack("player", unit)) ~= false
+end
+
+-- VPS_SkullCount: 0 = none, 1..10 = that many skulls next to the number, -1 = "??" (replace the number).
+function VPS.SkullCount(level, unit)
+	if level == nil then return 0 end
+	if level < 0 then return -1 end
+	if unit and not VPS.IsHostileThreat(unit) then return 0 end
+	local diff = level - (UnitLevel("player") or 1)
+	if diff > VPS.SKULL_GAME_LEVELS then return -1 end
 	local at = VPS.db and VPS.db.skullAtLevelsAbove or VPS.SKULL_GAME_LEVELS
-	return level >= (UnitLevel("player") or 1) + at
+	if diff < at then return 0 end
+	return diff
+end
+
+-- True when the level should read in skull red (any skull form).
+function VPS.IsSkullLevel(level, unit)
+	return VPS.SkullCount(level, unit) ~= 0
 end
 
 --------------------------------------------------------------------------------

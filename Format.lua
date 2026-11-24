@@ -40,8 +40,9 @@ local resolvers = {
 	["[level]"] = function(unit)
 		local v = Plain(UnitLevel(unit))
 		if v == nil then return "" end
-		if v < 0 then return Format.SKULL_TEXT end
-		if VPS.IsSkullLevel(v) then return Format.SKULL_ICON .. tostring(v) end
+		local n = VPS.SkullCount(v, unit)           -- -1 = "??", 0 = none, N = N skulls then the number; friendlies 0
+		if n < 0 then return Format.SKULL_TEXT end
+		if n > 0 then return string.rep(Format.SKULL_ICON, n) .. tostring(v) end
 		return tostring(v)
 	end,
 	["[hp]"] = function(unit)

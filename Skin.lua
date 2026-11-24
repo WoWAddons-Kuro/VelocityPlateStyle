@@ -255,8 +255,8 @@ local function ColorFor(uf, e, unit, level)
 		local c = e.customColor; return c[1] or 1, c[2] or 1, c[3] or 1
 	elseif mode == "difficulty" then
 		if level == nil then return 1, 1, 1 end
-		if VPS.IsSkullLevel(level) then return SKULL_COLOR[1], SKULL_COLOR[2], SKULL_COLOR[3] end
-		if Plain(UnitCanAttack("player", unit)) == false then return 0.8, 0.8, 0.8 end
+		if not VPS.IsHostileThreat(unit) then return 0.8, 0.8, 0.8 end      -- friendlies: grey, no red/skull cues
+		if VPS.IsSkullLevel(level, unit) then return SKULL_COLOR[1], SKULL_COLOR[2], SKULL_COLOR[3] end
 		-- At the user's over-level threshold the number goes skull-red too (owner 2026-11-24).
 		if Skin.IsOverLevel(unit) then return SKULL_COLOR[1], SKULL_COLOR[2], SKULL_COLOR[3] end
 		return Client.DifficultyColor(UnitLevel("player") or 1, level)
@@ -567,13 +567,12 @@ local function GlowColor(mode, hb)
 end
 
 function Skin.IsOverLevel(unit)
+	if not VPS.IsHostileThreat(unit) then return false end         -- friendlies never, forced or not
 	-- /vps forcedangerlevel N (test aid, not saved): every attackable plate counts as over-level.
 	if VPS.forceDangerLevel and VPS.forceDangerLevel > 0 then return true end
 	local level = Plain(UnitLevel(unit))
 	if level == nil then return false end
 	if level < 0 then return true end
-	local attackable = Plain(UnitCanAttack("player", unit))
-	if attackable == false then return false end
 	return level >= (UnitLevel("player") or 1) + (db().overLevelThreshold or 3)
 end
 
