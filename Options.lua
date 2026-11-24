@@ -472,6 +472,13 @@ SlashCmdList.VELOCITYPLATESTYLE = function(msg)
 		VPS.Print(VPS.StatusText())
 	elseif msg == "reset" then
 		VPS.ResetToDefaults(); VPS.Print("settings reset to defaults")
+	elseif msg:match("^forcedangerlevel") then
+		-- /vps forcedangerlevel 2 -> every plate shows the over-level highlight as if +2 (the number
+		-- will pick the wave count once that exists); 0 or no number clears. Test aid, not saved.
+		local n = tonumber(msg:match("^forcedangerlevel%s*(%d*)")) or 0
+		VPS.forceDangerLevel = n > 0 and n or nil
+		VPS.RestyleAll()
+		VPS.Print(VPS.forceDangerLevel and ("forcing the over-level highlight at +" .. n .. " on every plate; /vps forcedangerlevel 0 to clear") or "over-level highlight no longer forced")
 	elseif msg == "debug" then
 		local uf = VPS.UnitFrameForUnit("target")
 		if not uf then VPS.Print("target has no (non-forbidden) nameplate"); return end

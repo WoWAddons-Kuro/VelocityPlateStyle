@@ -555,6 +555,8 @@ local function GlowColor(mode, hb)
 end
 
 function Skin.IsOverLevel(unit)
+	-- /vps forcedangerlevel N (test aid, not saved): every attackable plate counts as over-level.
+	if VPS.forceDangerLevel and VPS.forceDangerLevel > 0 then return true end
 	local level = Plain(UnitLevel(unit))
 	if level == nil then return false end
 	if level < 0 then return true end
