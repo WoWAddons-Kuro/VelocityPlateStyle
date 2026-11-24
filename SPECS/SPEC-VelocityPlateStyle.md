@@ -38,6 +38,19 @@
       (Blizzard's aggro-flare mechanism) + alpha pulse, additive, gold/red; red modes also redden the outline and name.
       Tried and rejected: the 10.x `ActionButtonSpellAlertTemplate` flipbook (smears to a static tint on a bar).
       Lesson: XML template names are not Lua globals — never guard on them.
+- [x] **M2d — Danger cues: how dangerous, and how much (2026-11-24, 4123e4f..5f7fe57).** The over-level sweep was
+      too subtle and said nothing about *how many* levels. Decided **[D]**: the animation conveys *danger*, the level
+      text conveys *magnitude*. (1) A 50 % black dimmer (`glow.dim`) sits under the sweep while it runs, so the yellow
+      wave reads against a half-bright bar; Blizzard's fill colour is still never written. (2) The level number turns
+      skull-red at the user's `overLevelThreshold`, in every mode including *None*. (3) New `db.skullAtLevelsAbove`
+      (slider 1–10, default 10 = the game's own `-1` point): from that gap the `[level]` token renders **one inline
+      skull per level above the player** (`|T…UI-TargetingFrame-Skull:0|t` × gap) before the number, via
+      `VPS.SkullCount(level, unit)` → `0 | 1..10 | -1 ("??")`; 11+ or a real `-1` is the plain `??`. (4) Friendly /
+      non-attackable units (`VPS.IsHostileThreat`, secret ⇒ threat) get **no** danger cue of any kind. (5) `/vps
+      forcedangerlevel N` previews the highlight on every hostile plate (not saved). **Rejected:** N phase-shifted sweep
+      layers per level — re-issuing `SetTexCoord` under a running `TextureCoordTranslation` resets its base and the
+      sweep degrades to a flash; a tried ADD blend was less visible than BLEND; outline changes are "just another outline".
+- [ ] **M2e — Danger Highlight section + settings scope (global / Edit Mode layout / character).** See "Danger Highlight scope".
 - [ ] **M3 — Threat level (classification) modes + danger emphasis.** Text / Frame / Icon+Frame modes, danger threshold.
 - [ ] **M4 — Forever client file + verification pass** on 1.60.1 (R5 path throughout).
 - [x] **M5 — Blizzard nameplate settings (done 2026-11-23, 9b87713) [D: button, not mirror].** A "Blizzard Nameplate
@@ -377,6 +390,69 @@ when close". **Era:** `UNIT_THREAT_LIST_UPDATE` + `UnitThreatSituation("player",
 **Forever [D]:** no threat reads; the stock `AggroHighlight` region is restyled (texture, size, alpha) to the chosen
 mode and the client decides when it shows; unexpressible modes fall back to the nearest and the tooltip says so.
 
+### Danger Highlight scope (M2e) **[D 2026-11-24]**
+
+The over-level cues are a *character's* risk posture (a Hardcore alt wants +2 / skulls at +3; a main does not), so the
+player chooses **where the danger settings live**. Everything else in the DB stays account-wide as today.
+
+**Sections.** The old *Target Highlight* section splits in two:
+
+| Section | Keys | Scope |
+|---|---|---|
+| **Selected Target Highlight** | `targetColor`, `targetThickness` | account-wide (unchanged) |
+| **Danger Highlight** | `overLevelMode`, `overLevelThreshold`, `skullAtLevelsAbove` — the `VPS_DangerSettings` record | chosen by `dangerScope` |
+
+**The switch** (`db.dangerScope`, itself always account-wide — it decides where to look), shown as three radio buttons at
+the top of the Danger Highlight section, no "(default)" wording in the UI:
+
+```
+ Danger highlight settings apply:   (•) To all characters   ( ) Per Edit Mode layout   ( ) To this character only
+```
+
+| `dangerScope` | record read/written | key |
+|---|---|---|
+| `"global"` (default) | `db.danger` | — |
+| `"layout"` | `db.dangerByLayout[layoutName]` | the game's **active Edit Mode layout name**, via a copy of VQT's `Core\LayoutProfile.lua` (merged list from `EditModeManagerFrame.layoutInfo`, presets first; `EDIT_MODE_LAYOUTS_UPDATED` read next frame; create = copy of the active record, rename moves it, delete drops it). Both clients have Edit Mode (`_EXTERNAL_APIS\wow_edit_mode_layouts_api.md`). |
+| `"character"` | `db.dangerByChar[guid]` | `UnitGUID("player")` — never a name (workspace rule) |
+
+**Resolution.** One accessor, used at every read site (`Skin.IsOverLevel`, `ApplyOverLevel`, `VPS.SkullCount`, Options):
+
+```lua
+function VPS.Danger()           -- -> VPS_DangerSettings (live table; Options writes into it)
+  local d = VPS.db
+  if d.dangerScope == "character" then return Bucket(d.dangerByChar, VPS.Client.PlayerKey())
+  elseif d.dangerScope == "layout" then return Bucket(d.dangerByLayout, VPS.LayoutProfile.Name())
+  else return d.danger end
+end
+-- Bucket(t, key): t[key] or a fresh DeepCopy of d.danger (the global record) stored under key.
+```
+
+- **Seeding [D 3]:** a bucket that does not exist yet is created as a copy of the *global* record at first access, so
+  switching scope never visibly changes anything until the player edits. Switching back to global shows the global
+  record again; the other buckets are kept (nothing is deleted by flipping the switch).
+- **Migration (DB v4 → v5):** the three flat keys move into `db.danger = { overLevelMode, overLevelThreshold,
+  skullAtLevelsAbove }`; the flat keys are removed. `CopyDefaults` fills `danger` from `VPS.DEFAULTS.danger`.
+- Layout name before Edit Mode reports it (a moment after `PLAYER_LOGIN`): the placeholder `"Default"` is used, and
+  `LayoutProfile.OnChanged` triggers `VPS.RestyleAll()` so plates re-read the right bucket as soon as the real name
+  arrives — same for a layout switch in the game's dropdown.
+- `/vps status` appends `danger: <scope> (<key>)`.
+
+**Non-goals [D]:** no scope switch for any other section (bar, text grid, target border stay account-wide); no
+import/export; no per-spec buckets.
+
+**Saved variables (added):**
+
+```lua
+  Version = 5,
+  dangerScope = "global",                          -- VPS_DangerScope: global | layout | character (always account-wide)
+  danger = { overLevelMode = "animatedRed", overLevelThreshold = 2, skullAtLevelsAbove = 10 },   -- VPS_DangerSettings
+  dangerByLayout = { [layoutName] = VPS_DangerSettings },   -- Edit Mode layout name
+  dangerByChar   = { [guid] = VPS_DangerSettings },         -- UnitGUID("player")
+```
+
+**Open question:** should the *rest* of VPS (bar/text/target) also become per-Edit-Mode-layout like VelocityQuestTracker?
+Not in this milestone; if yes, it is its own milestone with a whole-DB `profiles[layoutName]` move.
+
 ## Settings panel
 
 **[D] Stock vertical layout is NOT used.** The page is a **canvas category in the GotJunk style**
@@ -429,6 +505,7 @@ VelocityPlateStyleDB = {
     -- custom rows: { id = "c3", label = "...", format = "...", anchor, align, size, color = "custom", customColor = {r,g,b} }
   },
   nextCustomId = 1,
+  overLevelMode = "animatedRed", overLevelThreshold = 2, skullAtLevelsAbove = 10,   -- M2c / M2d (see milestones)
   -- M3
   classificationMode = "icon", dangerThreshold = 3,
   -- M6

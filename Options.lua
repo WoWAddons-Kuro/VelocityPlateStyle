@@ -210,7 +210,7 @@ local function CreateOptions()
 		function(v) return string.format("Over-leveled when the mob is %d+ levels above you (skull always counts)", v) end), 44, -4)
 	-- The game only shows its skull (-1) about 10 levels up; Hardcore players want it sooner.
 	tg:Add(Slider(tg, "VelocityPlateStyleSkullAt", "skullAtLevelsAbove", 1, VPS.SKULL_GAME_LEVELS, 1,
-		function(v) return string.format("Show one skull per level above you next to the level, from when the mob is %d+ levels above you (%d = the game's own rule)", v, VPS.SKULL_GAME_LEVELS) end), 44, -4)
+		function(v) return string.format("Show skulls when the enemy is +%d levels above you (one per level; %d = the game's own rule)", v, VPS.SKULL_GAME_LEVELS) end), 44, -4)
 	tg:Finish()
 
 	-- Section: Text (the element grid) -------------------------------------------------
